@@ -763,7 +763,15 @@ signals = JarvisSignals()
 # --- SAFE TOOLS / PLANNING ---
 class PluginManager:
     """Minimal plugin loader with simple permissions enforcement."""
-    PERMISSION_FIELDS = {"network", "spotify", "camera", "microphone", "files", "keyboard"}
+
+    PERMISSION_FIELDS = {
+        "network",
+        "spotify",
+        "camera",
+        "microphone",
+        "files",
+        "keyboard",
+    }
 
     def __init__(self, plugins_dir: Path):
         self.plugins_dir = plugins_dir
@@ -773,39 +781,64 @@ class PluginManager:
 
     def scan_plugins(self):
         self.manifests.clear()
+
         for plugin_folder in self.plugins_dir.iterdir():
             if plugin_folder.is_dir():
                 manifest_path = plugin_folder / "manifest.json"
                 code_path = plugin_folder / "plugin.py"
+
                 if manifest_path.exists() and code_path.exists():
                     try:
-                        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-                        permissions = set(manifest.get("permissions", [])) & self.PERMISSION_FIELDS
+                        manifest = json.loads(
+                            manifest_path.read_text(encoding="utf-8")
+                        )
+
+                        permissions = (
+                            set(manifest.get("permissions", []))
+                            & self.PERMISSION_FIELDS
+                        )
+
                         manifest["permissions"] = list(permissions)
+
                         self.manifests[plugin_folder.name] = {
                             "path": plugin_folder,
                             "manifest": manifest,
                             "code": code_path,
                         }
+
                     except Exception as exc:
-                        log.error("Erreur manifeste plugin %s : %s", plugin_folder.name, exc)
+                        log.error(
+                            "Erreur manifeste plugin %s : %s",
+                            plugin_folder.name,
+                            exc,
+                        )
 
     def load_plugin(self, plugin_name: str):
         info = self.manifests.get(plugin_name)
+
         if not info:
             return False, f"Plugin inconnu : {plugin_name}"
+
         try:
-            spec = importlib.util.spec_from_file_location(f"jarvis_plugin_{plugin_name}", str(info["code"]))
+            spec = importlib.util.spec_from_file_location(
+                f"jarvis_plugin_{plugin_name}",
+                str(info["code"]),
+            )
+
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
+
             self.loaded[plugin_name] = {
                 "module": module,
                 "manifest": info["manifest"],
             }
+
             self.log_plugin_event(plugin_name, "loaded")
+
             return True, f"Plugin '{plugin_name}' chargé."
+
         except Exception as exc:
-            return False, f"Échec chargement plugin '{plugin_name}' : {exc}"
+                    return False, f"Échec chargement plugin '{plugin_name}' : {exc}"
 
     def unload_plugin(self, plugin_name: str):
         if plugin_name in self.loaded:
