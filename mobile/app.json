@@ -1,0 +1,11 @@
+{
+  "expo": {
+    "name": "J.A.R.V.I.S. NEO Mobile",
+    "slug": "jarvis-neo-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "android": {"package": "com.jarvisneo.mobile"},
+    "ios": {"bundleIdentifier": "com.jarvisneo.mobile"}
+  }
+}
