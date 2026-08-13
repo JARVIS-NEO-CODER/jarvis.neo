@@ -213,7 +213,7 @@ def main():
         import assistant
         p.assistant=assistant
         p.store.event('system','Plateforme NEO v4 démarrée')       
-        if hasattr(assistant,'main'):assistant.main()
+        neo_hud_runtime.main()
     except Exception as e:
         p.store.event('system',f'Erreur assistant.py: {e}','ERROR')
         if WEB_OK:
