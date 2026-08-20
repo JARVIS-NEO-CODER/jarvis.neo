@@ -1,0 +1,33 @@
+# J.A.R.V.I.S. NEO - Python dependencies
+# Python: 3.12.x
+
+# Desktop UI
+PyQt6
+PyQt6-WebEngine
+
+# System / desktop control
+psutil
+PyAutoGUI
+Pyperclip
+
+# HTTP / Web / API
+requests
+beautifulsoup4
+fastapi
+uvicorn
+websockets
+
+# Voice / audio
+SpeechRecognition
+edge-tts
+pygame
+sounddevice
+soundfile
+openai-whisper
+
+# Vision / numerical processing
+numpy
+opencv-python
+
+# Local AI
+ollama
