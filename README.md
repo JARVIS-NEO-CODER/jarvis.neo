@@ -10,8 +10,11 @@ NEO est organisé autour de plusieurs briques :
 
 - **Context Engine** — observation locale légère et détection de contextes/habitudes.
 - **Action Engine** — exécution d'actions autorisées avec cooldown et journalisation.
-- **Agent** — traitement d'instructions et orchestration des capacités.
+- **Automation Engine** — déclencheurs, conditions et workflows réversibles.
+- **Performance Manager** — adaptation de la charge de NEO au contexte détecté, notamment le gaming.
 - **Memory / Store** — événements et souvenirs persistants.
+- **Core Bridge** — point d'intégration progressif entre le nouveau Core et l'ancien runtime.
+- **Agent** — traitement d'instructions et orchestration des capacités.
 - **HUD** — interface cockpit et représentation de l'état de NEO.
 - **Plugins** — extension des capacités avec permissions.
 - **Mobile** — contrôle et notifications via le réseau local.
@@ -19,42 +22,43 @@ NEO est organisé autour de plusieurs briques :
 
 ## Architecture actuelle
 
-```text
-Utilisateur
-    │
-    ▼
-  Agent
-    │
-    ├──────────► Actions
-    │
-    ├──────────► Plugins
-    │
-    └──────────► Assistant / IA
+Le nouveau cœur est regroupé dans `core/` afin d'éviter de concentrer toute la logique dans `assistant.py`.
 
-Context Engine
-    │
-    ├── événements locaux
-    ├── habitudes
-    └── contexte détecté
-             │
-             ▼
-       Action Engine
-             │
-             ▼
-        NEO / HUD
+```text
+J.A.R.V.I.S. NEO
+│
+├── assistant.py              # runtime historique / interface actuelle
+│
+└── core/
+    ├── memory.py             # stockage et historique local
+    ├── context_engine.py     # détection du contexte
+    ├── action_engine.py      # actions autorisées
+    ├── automation.py         # règles et automatisations
+    ├── performance_manager.py # adaptation de la charge
+    └── core_bridge.py        # raccord progressif avec assistant.py
 ```
+
+Le `CoreBridge` reste volontairement léger : il ne démarre pas de thread autonome et ne déclenche pas Ollama de lui-même. Le runtime principal décide quand exécuter un cycle, ce qui permet de limiter la consommation sur les machines peu puissantes.
 
 ## Context Engine
 
-`context_engine.py` fonctionne localement et ne fait pas d'appel LLM. Il peut observer des processus autorisés, détecter des signaux de gaming, tenir compte de l'heure et du jour, apprendre à partir des activations manuelles, enregistrer les événements dans SQLite et produire un niveau de confiance pour un contexte.
+Le moteur fonctionne localement et ne fait pas d'appel LLM pour détecter le contexte. Il peut observer des processus autorisés, détecter des signaux de gaming, tenir compte de l'heure et du jour, apprendre à partir des activations manuelles, enregistrer les événements dans SQLite et produire un niveau de confiance pour un contexte.
 
-La base est stockée dans `neo_context.db` à côté du projet et un état courant est écrit dans `neo_context_state.json`.
+La base est stockée localement et l'état courant peut être conservé pour permettre à NEO de reprendre son contexte après un redémarrage.
 
 ## Action Engine
 
-`action_engine.py` fournit un registre d'actions explicites. Il ne lance pas arbitrairement des commandes shell : les actions doivent être enregistrées dans le moteur.
+`core/action_engine.py` fournit un registre d'actions explicites. Il ne lance pas arbitrairement des commandes shell : les actions doivent être enregistrées dans le moteur.
 
 L'action `gaming_mode` est prévue pour appeler le processeur NEO avec `active le mode gaming` lorsque le contexte gaming atteint un niveau de confiance suffisant. Un cooldown évite les déclenchements répétés.
+
+## Performance et gaming
+
+Le **Performance Manager** permet de définir des profils de charge afin que les fonctions lourdes de NEO puissent être réduites lorsque le PC est déjà sollicité.
+
+L'objectif est notamment d'éviter que la surveillance permanente, la vision ou les appels IA ne consomment inutilement des ressources pendant un jeu comme ETS2.
+
+Les décisions de performance restent locales et ne nécessitent pas de requête Ollama.
 
 ## Philosophie de sécurité
 
@@ -82,7 +86,8 @@ Les futures fonctionnalités de surveillance, vision, mémoire et domotique devr
 - HUD cockpit complet ;
 - états `IDLE`, `LISTENING`, `THINKING`, `EXECUTING`, `SPEAKING`, `SENTINEL` ;
 - timeline d'actions ;
-- feedback rapide.
+- feedback rapide ;
+- animations et fenêtres contextuelles synchronisées avec les réponses vocales.
 
 ### Audio
 - sound design contextuel ;
@@ -103,6 +108,6 @@ Les futures fonctionnalités de surveillance, vision, mémoire et domotique devr
 
 ## Développement
 
-Le projet est principalement Python et utilise notamment SQLite, FastAPI/Uvicorn et `psutil` selon les composants installés. Certains modules sont optionnels et doivent rester capables de fonctionner lorsque leurs dépendances ne sont pas disponibles.
+Le projet est principalement Python et utilise notamment SQLite, FastAPI/Uvicorn, `psutil`, PyQt6 et Ollama selon les composants installés. Certains modules sont optionnels et doivent rester capables de fonctionner lorsque leurs dépendances ne sont pas disponibles.
 
 **Important :** le projet évolue rapidement. Avant une modification importante, créer un commit afin de pouvoir revenir en arrière facilement.
