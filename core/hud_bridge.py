@@ -1,7 +1,10 @@
 """EventBus bridge for HUD requests."""
 from __future__ import annotations
 
+import logging
 from typing import Any, Callable
+
+logger = logging.getLogger("JarvisHudBridge")
 
 
 class HudBridge:
@@ -28,8 +31,14 @@ class HudBridge:
 
     def _on_hud_show(self, event: Any) -> None:
         payload = getattr(event, "payload", event)
-        if self.callback is not None:
-            self.callback(dict(payload or {}))
+        data = dict(payload or {})
+        if self.callback is None:
+            logger.debug("HUD request received without UI callback: %s", data)
+            return
+        try:
+            self.callback(data)
+        except Exception:
+            logger.exception("HUD callback failed")
 
 
 __all__ = ["HudBridge"]
