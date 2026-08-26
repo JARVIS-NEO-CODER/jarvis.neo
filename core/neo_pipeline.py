@@ -13,7 +13,7 @@ from .runtime import NeoRuntime
 
 
 class NeoPipeline:
-    """Own and lifecycle-manage the core observation pipeline."""
+    """Own and lifecycle-manage the observation-driven NEO core."""
 
     def __init__(self, *, hud_callback: Any = None, interval: float = 2.0) -> None:
         self.bus = EventBus()
@@ -30,8 +30,8 @@ class NeoPipeline:
             return
         self.runtime.attach()
         self.bus.start()
-        self.observer.start()
         self._running = True
+        self.observer.start()
 
     def stop(self) -> None:
         if not self._running:
