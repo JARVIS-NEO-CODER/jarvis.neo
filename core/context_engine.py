@@ -1,8 +1,8 @@
 """Context detection for J.A.R.V.I.S. NEO.
 
-This module deliberately stays lightweight: it consumes local events and
-history from NeoMemory and produces context changes. It does not execute
-system actions and does not call an AI model for every event.
+The engine is application-agnostic: it never keeps a hard-coded list of
+programs. Producers provide neutral observations and the engine combines them
+into a lightweight context decision.
 """
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ class ContextResult:
 
 
 class ContextEngine:
-    """Small rule/statistics-based context engine for local NEO events."""
+    """Small observation-based context engine for local NEO events."""
 
     def __init__(self, memory: NeoMemory | None = None, event_bus: Any | None = None) -> None:
         self.memory = memory or NeoMemory()
@@ -50,16 +50,25 @@ class ContextEngine:
         self._attached = False
 
     def _on_app_started(self, event: Event) -> None:
-        """React immediately to known application launches."""
-        app = str(event.payload.get("app", "")).lower()
-        if app in {"ets2.exe", "eurotrucks2.exe"}:
-            self._set_context("gaming", trigger=app)
+        """Consume neutral application metadata; no program names are hard-coded."""
+        payload = event.payload
+        context = str(payload.get("context", "")).strip().lower()
+        app_type = str(payload.get("app_type", payload.get("category", ""))).strip().lower()
+
+        if context:
+            self._set_context(context, trigger=str(payload.get("app", "app.started")))
+        elif app_type in {"gaming", "game"}:
+            self._set_context("gaming", trigger=str(payload.get("app", "app.started")))
 
     def _on_system_metric(self, event: Event) -> None:
-        """Reserved for lightweight system-context rules."""
-        return None
+        """Use neutral runtime signals when producers provide them."""
+        payload = event.payload
+        context = str(payload.get("context", "")).strip().lower()
+        if context:
+            self._set_context(context, trigger="system.metric")
 
     def _set_context(self, context: str, *, trigger: str) -> None:
+        context = context.upper()
         if context == self.current_context:
             return
         previous = self.current_context
@@ -78,8 +87,8 @@ class ContextEngine:
             )
 
     def detect(self, *, now: datetime | None = None) -> ContextResult:
-        """Infer the most likely context from recent local observations."""
-        now = now or datetime.now()
+        """Infer context from neutral observations stored in memory."""
+        _ = now or datetime.now()
         events = self.memory.recent_events(limit=200)
         scores: Counter[str] = Counter()
         reasons: dict[str, list[str]] = {}
@@ -88,25 +97,13 @@ class ContextEngine:
             scores[name] += points
             reasons.setdefault(name, []).append(reason)
 
-        hour = now.hour + now.minute / 60
-        recent_text = " ".join(
-            f"{event.get('kind', '')} {event.get('message', '')}".lower()
-            for event in events[:50]
-        )
-
-        gaming_terms = ("ets2", "euro truck", "steam", "game", "gaming")
-        if any(term in recent_text for term in gaming_terms):
-            add("gaming", 0.55, "un événement récent correspond au gaming")
-        if 19 <= hour < 24:
-            add("gaming", 0.10, "horaire fréquent pour le gaming")
-
-        work_terms = ("vscode", "visual studio code", "python", "coding", "development")
-        if any(term in recent_text for term in work_terms):
-            add("work", 0.50, "activité de développement détectée")
-
-        study_terms = ("school", "étude", "study", "devoir", "cours")
-        if any(term in recent_text for term in study_terms):
-            add("study", 0.50, "activité d'étude détectée")
+        for event in events[:50]:
+            context = str(event.get("context", "")).strip().lower()
+            app_type = str(event.get("app_type", event.get("category", ""))).strip().lower()
+            if context:
+                add(context, 0.6, "observation de contexte explicite")
+            if app_type in {"gaming", "game"}:
+                add("gaming", 0.6, "type d'activité gaming fourni par le producteur")
 
         if not scores:
             return ContextResult("unknown", 0.0, ("aucun signal suffisant",))
