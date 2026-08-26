@@ -1,11 +1,12 @@
-"""Context detection for J.A.R.V.I.S. NEO.
+"""Context inference for J.A.R.V.I.S. NEO.
 
-The engine is application-agnostic: it never keeps a hard-coded list of
-programs. Producers provide neutral observations and the engine combines them
-into a lightweight context decision.
+The engine deliberately contains no hard-coded application/game list. It
+consumes neutral observations and derives broad runtime contexts. More
+specialised classifiers can later provide semantic contexts such as GAMING.
 """
 from __future__ import annotations
 
+import json
 from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime
@@ -23,16 +24,16 @@ class ContextResult:
 
 
 class ContextEngine:
-    """Small observation-based context engine for local NEO events."""
+    """Lightweight observation-based context engine with no app allow-list."""
 
     def __init__(self, memory: NeoMemory | None = None, event_bus: Any | None = None) -> None:
         self.memory = memory or NeoMemory()
         self.bus = event_bus
         self.current_context = "IDLE"
         self._attached = False
+        self._last_metric: dict[str, Any] = {}
 
     def attach_to_bus(self, event_bus: Any | None = None) -> None:
-        """Subscribe to live events without requiring a bus at construction."""
         if event_bus is not None:
             self.bus = event_bus
         if self.bus is None or self._attached:
@@ -42,7 +43,6 @@ class ContextEngine:
         self._attached = True
 
     def detach_from_bus(self) -> None:
-        """Remove the subscriptions created by attach_to_bus()."""
         if self.bus is None or not self._attached:
             return
         self.bus.unsubscribe("app.started", self._on_app_started)
@@ -50,26 +50,34 @@ class ContextEngine:
         self._attached = False
 
     def _on_app_started(self, event: Event) -> None:
-        """Consume neutral application metadata; no program names are hard-coded."""
+        """Accept an explicitly classified activity without knowing app names."""
         payload = event.payload
-        context = str(payload.get("context", "")).strip().lower()
-        app_type = str(payload.get("app_type", payload.get("category", ""))).strip().lower()
-
+        context = self._normalise_context(payload.get("context"))
+        activity = self._normalise_context(payload.get("activity_type", payload.get("app_type")))
         if context:
-            self._set_context(context, trigger=str(payload.get("app", "app.started")))
-        elif app_type in {"gaming", "game"}:
-            self._set_context("gaming", trigger=str(payload.get("app", "app.started")))
+            self._set_context(context, trigger=str(payload.get("app", event.name)))
+        elif activity:
+            self._set_context(activity, trigger=str(payload.get("app", event.name)))
 
     def _on_system_metric(self, event: Event) -> None:
-        """Use neutral runtime signals when producers provide them."""
-        payload = event.payload
-        context = str(payload.get("context", "")).strip().lower()
-        if context:
-            self._set_context(context, trigger="system.metric")
+        payload = dict(event.payload or {})
+        self._last_metric = payload
+
+        # These are deliberately broad, application-independent states.
+        # A high resource load alone is not enough evidence to call something
+        # "gaming", so NEO does not make that claim here.
+        active_process = str(payload.get("active_process") or "").strip()
+        active_window = str(payload.get("active_window") or "").strip()
+        cpu = self._number(payload.get("cpu_percent"))
+
+        if active_process or active_window:
+            self._set_context("ACTIVE", trigger=active_process or active_window)
+        elif cpu is not None and cpu >= 90:
+            self._set_context("RESOURCE_HEAVY", trigger="system.metric")
 
     def _set_context(self, context: str, *, trigger: str) -> None:
         context = context.upper()
-        if context == self.current_context:
+        if not context or context == self.current_context:
             return
         previous = self.current_context
         self.current_context = context
@@ -87,34 +95,45 @@ class ContextEngine:
             )
 
     def detect(self, *, now: datetime | None = None) -> ContextResult:
-        """Infer context from neutral observations stored in memory."""
+        """Infer the strongest broad context from recent neutral observations."""
         _ = now or datetime.now()
         events = self.memory.recent_events(limit=200)
         scores: Counter[str] = Counter()
         reasons: dict[str, list[str]] = {}
 
         def add(name: str, points: float, reason: str) -> None:
+            name = self._normalise_context(name)
+            if not name:
+                return
             scores[name] += points
             reasons.setdefault(name, []).append(reason)
 
-        for event in events[:50]:
-            context = str(event.get("context", "")).strip().lower()
-            app_type = str(event.get("app_type", event.get("category", ""))).strip().lower()
+        for row in events[:50]:
+            payload = self._metadata(row.get("metadata"))
+            context = payload.get("context")
+            activity = payload.get("activity_type", payload.get("app_type"))
             if context:
-                add(context, 0.6, "observation de contexte explicite")
-            if app_type in {"gaming", "game"}:
-                add("gaming", 0.6, "type d'activité gaming fourni par le producteur")
+                add(str(context), 0.8, "observation explicite")
+            if activity:
+                add(str(activity), 0.8, "activité fournie par le producteur")
+
+            process = payload.get("active_process")
+            window = payload.get("active_window")
+            if process or window:
+                add("ACTIVE", 0.25, "activité au premier plan")
+
+            cpu = self._number(payload.get("cpu_percent"))
+            if cpu is not None and cpu >= 90:
+                add("RESOURCE_HEAVY", 0.2, "charge CPU élevée")
 
         if not scores:
-            return ContextResult("unknown", 0.0, ("aucun signal suffisant",))
+            return ContextResult("UNKNOWN", 0.0, ("aucun signal suffisant",))
 
         name, raw_score = scores.most_common(1)[0]
-        confidence = min(0.99, raw_score)
-        return ContextResult(name, confidence, tuple(reasons[name]))
+        return ContextResult(name, min(0.99, raw_score), tuple(reasons[name]))
 
     def learn_current_context(self, result: ContextResult) -> None:
-        """Persist a lightweight observation for future habit learning."""
-        if result.name == "unknown" or result.confidence < 0.5:
+        if result.name == "UNKNOWN" or result.confidence < 0.5:
             return
         self.memory.remember_fact(
             "context",
@@ -123,6 +142,31 @@ class ContextEngine:
             confidence=result.confidence,
             source="context_engine",
         )
+
+    @staticmethod
+    def _metadata(value: Any) -> dict[str, Any]:
+        if isinstance(value, dict):
+            return value
+        if not value:
+            return {}
+        try:
+            parsed = json.loads(str(value))
+            return parsed if isinstance(parsed, dict) else {}
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return {}
+
+    @staticmethod
+    def _normalise_context(value: Any) -> str:
+        if value is None:
+            return ""
+        return str(value).strip().replace(" ", "_").upper()
+
+    @staticmethod
+    def _number(value: Any) -> float | None:
+        try:
+            return float(value) if value is not None else None
+        except (TypeError, ValueError):
+            return None
 
 
 __all__ = ["ContextEngine", "ContextResult"]
