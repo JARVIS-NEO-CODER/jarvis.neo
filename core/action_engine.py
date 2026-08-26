@@ -7,7 +7,7 @@ must enable deliberately.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any, Callable
@@ -40,11 +40,13 @@ class ActionDefinition:
 class ActionEngine:
     """Execute only registered actions allowed by the current control mode."""
 
-    def __init__(self, memory: NeoMemory | None = None) -> None:
+    def __init__(self, memory: NeoMemory | None = None, event_bus: Any | None = None) -> None:
         self.memory = memory or NeoMemory()
         self.mode = ControlMode.NORMAL
         self._full_control_until: datetime | None = None
         self._actions: dict[str, ActionDefinition] = {}
+        self._event_bus = event_bus
+        self._register_safe_actions()
 
     @property
     def full_control_active(self) -> bool:
@@ -66,11 +68,7 @@ class ActionEngine:
         self._full_control_until = None
 
     def enable_full_control(self, *, duration_minutes: int = 30) -> None:
-        """Explicitly enable temporary full-control capability.
-
-        A UI/voice confirmation should call this method only after displaying
-        the warning to the user. The mode automatically expires.
-        """
+        """Explicitly enable temporary full-control capability."""
         duration_minutes = max(1, min(int(duration_minutes), 120))
         self.mode = ControlMode.FULL_CONTROL
         self._full_control_until = datetime.now() + timedelta(minutes=duration_minutes)
@@ -116,6 +114,40 @@ class ActionEngine:
 
         self._log_result(result)
         return result
+
+    def attach_to_bus(self, bus: Any) -> None:
+        """Attach the engine to an EventBus used by safe HUD actions."""
+        self._event_bus = bus
+
+    def detach_from_bus(self) -> None:
+        """Detach the current EventBus reference."""
+        self._event_bus = None
+
+    def _register_safe_actions(self) -> None:
+        self.register(
+            ActionDefinition(
+                name="action.show_hud",
+                handler=self._show_hud,
+                minimum_mode=ControlMode.NORMAL,
+                description="Request a HUD view without performing OS actions.",
+            )
+        )
+
+    def _show_hud(self, target: str = "context", **data: Any) -> str:
+        """Publish a HUD request for a future HUD consumer."""
+        allowed_targets = {"system_monitor", "media_player", "code_diff", "context", "none"}
+        if target not in allowed_targets:
+            raise ValueError(f"HUD target inconnu: {target}")
+        if target == "none":
+            return "HUD ignoré."
+        if self._event_bus is None:
+            raise RuntimeError("Aucun EventBus n'est attaché à l'ActionEngine.")
+
+        payload = {"target": target, **data}
+        from .bus import Event
+
+        self._event_bus.publish(Event(name="hud.show", payload=payload, priority=10))
+        return f"HUD demandé: {target}"
 
     def _log_result(self, result: ActionResult) -> None:
         self.memory.record_event(
