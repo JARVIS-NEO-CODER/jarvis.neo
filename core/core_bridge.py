@@ -11,7 +11,7 @@ from time import monotonic
 
 from .action_engine import ActionEngine
 from .automation import AutomationEngine
-from .context_engine import ContextEngine
+from .context_engine import ContextEngine, ContextResult
 from .memory import NeoMemory
 from .performance_manager import PerformanceManager
 
@@ -25,6 +25,8 @@ class CoreBridge:
     actions: ActionEngine
     automation: AutomationEngine
     performance: PerformanceManager
+    _last_tick: float = 0.0
+    last_context: ContextResult | None = None
 
     @classmethod
     def create(cls) -> "CoreBridge":
@@ -35,21 +37,27 @@ class CoreBridge:
         performance = PerformanceManager()
         return cls(memory, context, actions, automation, performance)
 
-    def tick(self) -> None:
-        """Run one lightweight core cycle.
+    def tick(self) -> ContextResult | None:
+        """Run one lightweight, rate-limited core cycle.
 
-        The bridge deliberately does not start its own background thread or
-        invoke Ollama. The legacy application controls when this is called,
-        allowing Gaming/Performance mode to remain inexpensive.
+        No Ollama request, background thread, or arbitrary system action is
+        started here. The legacy application decides when to call this method.
         """
-        self.performance.update()
-        self.context.update()
+        now = monotonic()
+        if self._last_tick and not self.performance.should_poll(now - self._last_tick):
+            return self.last_context
+
+        self._last_tick = now
+        result = self.context.detect()
+        self.last_context = result
+        self.performance.apply_context(result.name)
+        self.context.learn_current_context(result)
+        self.automation.evaluate(result, now=now)
+        return result
 
     def shutdown(self) -> None:
         """Release core resources when the legacy application exits."""
-        close = getattr(self.memory, "close", None)
-        if callable(close):
-            close()
+        self.memory.close()
 
 
 __all__ = ["CoreBridge"]
