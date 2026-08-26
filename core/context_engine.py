@@ -1,7 +1,7 @@
 """Context detection for J.A.R.V.I.S. NEO.
 
 This module deliberately stays lightweight: it consumes local events and
-history from NeoMemory and produces context + confidence. It does not execute
+history from NeoMemory and produces context changes. It does not execute
 system actions and does not call an AI model for every event.
 """
 from __future__ import annotations
@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+from .bus import Event
 from .memory import NeoMemory
 
 
@@ -24,8 +25,57 @@ class ContextResult:
 class ContextEngine:
     """Small rule/statistics-based context engine for local NEO events."""
 
-    def __init__(self, memory: NeoMemory | None = None) -> None:
+    def __init__(self, memory: NeoMemory | None = None, event_bus: Any | None = None) -> None:
         self.memory = memory or NeoMemory()
+        self.bus = event_bus
+        self.current_context = "IDLE"
+        self._attached = False
+
+    def attach_to_bus(self, event_bus: Any | None = None) -> None:
+        """Subscribe to live events without requiring a bus at construction."""
+        if event_bus is not None:
+            self.bus = event_bus
+        if self.bus is None or self._attached:
+            return
+        self.bus.subscribe("app.started", self._on_app_started)
+        self.bus.subscribe("system.metric", self._on_system_metric)
+        self._attached = True
+
+    def detach_from_bus(self) -> None:
+        """Remove the subscriptions created by attach_to_bus()."""
+        if self.bus is None or not self._attached:
+            return
+        self.bus.unsubscribe("app.started", self._on_app_started)
+        self.bus.unsubscribe("system.metric", self._on_system_metric)
+        self._attached = False
+
+    def _on_app_started(self, event: Event) -> None:
+        """React immediately to known application launches."""
+        app = str(event.payload.get("app", "")).lower()
+        if app in {"ets2.exe", "eurotrucks2.exe"}:
+            self._set_context("gaming", trigger=app)
+
+    def _on_system_metric(self, event: Event) -> None:
+        """Reserved for lightweight system-context rules."""
+        return None
+
+    def _set_context(self, context: str, *, trigger: str) -> None:
+        if context == self.current_context:
+            return
+        previous = self.current_context
+        self.current_context = context
+        if self.bus is not None:
+            self.bus.publish(
+                Event(
+                    name="context.changed",
+                    payload={
+                        "previous_context": previous,
+                        "current_context": context,
+                        "trigger": trigger,
+                    },
+                    priority=5,
+                )
+            )
 
     def detect(self, *, now: datetime | None = None) -> ContextResult:
         """Infer the most likely context from recent local observations."""
