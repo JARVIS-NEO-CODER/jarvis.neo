@@ -10,10 +10,11 @@ No AI/network dependency is required here.
 """
 from __future__ import annotations
 
+import json
 import sqlite3
 import time
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 DEFAULT_DB = Path.home() / ".jarvis_neo" / "neo_memory.db"
 
@@ -86,6 +87,22 @@ class NeoMemory:
     def _now() -> float:
         return time.time()
 
+    def attach_to_bus(self, bus: Any) -> None:
+        """Subscribe memory to the raw events it should persist."""
+        bus.subscribe("app.started", self._handle_event)
+        bus.subscribe("system.metric", self._handle_event)
+
+    def _handle_event(self, event: Any) -> None:
+        """Persist one bus event without making the memory layer bus-aware."""
+        metadata = json.dumps(event.payload, ensure_ascii=False, default=str)
+        self.record_event(
+            kind=event.name,
+            message=event.name,
+            source="event_bus",
+            metadata=metadata,
+            timestamp=event.timestamp,
+        )
+
     def record_event(
         self,
         kind: str,
@@ -102,7 +119,7 @@ class NeoMemory:
                 INSERT INTO events(timestamp, kind, source, message, metadata)
                 VALUES (?, ?, ?, ?, ?)
                 """,
-                (timestamp or self._now(), kind, source, message, metadata),
+                (timestamp if timestamp is not None else self._now(), kind, source, message, metadata),
             )
             return int(cur.lastrowid)
 
@@ -152,7 +169,7 @@ class NeoMemory:
                 ) VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    timestamp or self._now(),
+                    timestamp if timestamp is not None else self._now(),
                     cpu_percent,
                     ram_percent,
                     gpu_percent,
