@@ -1,10 +1,4 @@
-"""Safe action execution layer for J.A.R.V.I.S. NEO.
-
-Actions are explicit, logged, and permission-gated. The engine does not grant
-itself operating-system privileges and does not execute arbitrary AI-generated
-commands. Full-control mode is an explicit, temporary capability that callers
-must enable deliberately.
-"""
+"""Safe action execution layer for J.A.R.V.I.S. NEO."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -50,111 +44,96 @@ class ActionEngine:
 
     @property
     def full_control_active(self) -> bool:
-        return (
-            self.mode is ControlMode.FULL_CONTROL
-            and self._full_control_until is not None
-            and datetime.now() < self._full_control_until
-        )
+        return self.mode is ControlMode.FULL_CONTROL and self._full_control_until is not None and datetime.now() < self._full_control_until
 
     def register(self, definition: ActionDefinition) -> None:
         self._actions[definition.name] = definition
 
     def set_mode(self, mode: ControlMode) -> None:
         if mode is ControlMode.FULL_CONTROL:
-            raise PermissionError(
-                "FULL_CONTROL requires explicit enable_full_control() confirmation."
-            )
+            raise PermissionError("FULL_CONTROL requires explicit enable_full_control() confirmation.")
         self.mode = mode
         self._full_control_until = None
 
     def enable_full_control(self, *, duration_minutes: int = 30) -> None:
-        """Explicitly enable temporary full-control capability."""
         duration_minutes = max(1, min(int(duration_minutes), 120))
         self.mode = ControlMode.FULL_CONTROL
         self._full_control_until = datetime.now() + timedelta(minutes=duration_minutes)
-        self.memory.record_event(
-            "security",
-            f"FULL_CONTROL enabled for {duration_minutes} minutes",
-            source="action_engine",
-        )
+        self.memory.record_event("security", f"FULL_CONTROL enabled for {duration_minutes} minutes", source="action_engine")
 
     def disable_full_control(self) -> None:
         self.mode = ControlMode.NORMAL
         self._full_control_until = None
-        self.memory.record_event(
-            "security", "FULL_CONTROL disabled", source="action_engine"
-        )
+        self.memory.record_event("security", "FULL_CONTROL disabled", source="action_engine")
 
     def execute(self, action_name: str, **kwargs: Any) -> ActionResult:
         definition = self._actions.get(action_name)
         if definition is None:
-            result = ActionResult(action_name, False, "Action non autorisée ou inconnue.")
+            result = ActionResult(action_name, False, "Action inconnue.")
             self._log_result(result)
             return result
-
         if definition.minimum_mode is ControlMode.FULL_CONTROL and not self.full_control_active:
-            result = ActionResult(
-                action_name,
-                False,
-                "Cette action nécessite le mode FULL_CONTROL.",
-            )
+            result = ActionResult(action_name, False, "Cette action nécessite le mode FULL_CONTROL.")
             self._log_result(result)
             return result
-
         try:
             output = definition.handler(**kwargs)
-            result = ActionResult(
-                action_name,
-                True,
-                str(output) if output is not None else "Action terminée.",
-                verified=True,
-            )
-        except Exception as exc:  # noqa: BLE001 - action boundary must report failures
+            result = ActionResult(action_name, True, str(output) if output is not None else "Action terminée.", verified=True)
+        except Exception as exc:
             result = ActionResult(action_name, False, f"Échec: {exc}")
-
         self._log_result(result)
         return result
 
     def attach_to_bus(self, bus: Any) -> None:
-        """Attach the engine to an EventBus used by safe HUD actions."""
         self._event_bus = bus
 
     def detach_from_bus(self) -> None:
-        """Detach the current EventBus reference."""
         self._event_bus = None
 
     def _register_safe_actions(self) -> None:
-        self.register(
-            ActionDefinition(
-                name="action.show_hud",
-                handler=self._show_hud,
-                minimum_mode=ControlMode.NORMAL,
-                description="Request a HUD view without performing OS actions.",
-            )
-        )
+        self.register(ActionDefinition("action.notify", self._notify, ControlMode.NORMAL, "Publish a safe notification."))
+        self.register(ActionDefinition("action.set_state", self._set_state, ControlMode.NORMAL, "Publish a safe internal state update."))
+        self.register(ActionDefinition("action.publish_event", self._publish_event, ControlMode.NORMAL, "Publish an explicitly named bus event."))
+        self.register(ActionDefinition("action.show_hud", self._show_hud, ControlMode.NORMAL, "Request a HUD view."))
+
+    def _require_bus(self) -> Any:
+        if self._event_bus is None:
+            raise RuntimeError("Aucun EventBus n'est attaché à l'ActionEngine.")
+        return self._event_bus
+
+    def _notify(self, message: str = "", level: str = "info", **data: Any) -> str:
+        bus = self._require_bus()
+        from .bus import Event
+        bus.publish(Event(name="notification.show", payload={"message": message, "level": level, **data}, priority=10))
+        return "Notification publiée."
+
+    def _set_state(self, key: str, value: Any = None, **data: Any) -> str:
+        bus = self._require_bus()
+        from .bus import Event
+        bus.publish(Event(name="state.changed", payload={"key": key, "value": value, **data}, priority=10))
+        return f"État mis à jour: {key}"
+
+    def _publish_event(self, event_name: str, payload: dict[str, Any] | None = None) -> str:
+        if not event_name or event_name.startswith("security."):
+            raise ValueError("Nom d'événement non autorisé.")
+        bus = self._require_bus()
+        from .bus import Event
+        bus.publish(Event(name=event_name, payload=payload or {}, priority=10))
+        return f"Événement publié: {event_name}"
 
     def _show_hud(self, target: str = "context", **data: Any) -> str:
-        """Publish a HUD request for a future HUD consumer."""
         allowed_targets = {"system_monitor", "media_player", "code_diff", "context", "none"}
         if target not in allowed_targets:
             raise ValueError(f"HUD target inconnu: {target}")
         if target == "none":
             return "HUD ignoré."
-        if self._event_bus is None:
-            raise RuntimeError("Aucun EventBus n'est attaché à l'ActionEngine.")
-
-        payload = {"target": target, **data}
+        bus = self._require_bus()
         from .bus import Event
-
-        self._event_bus.publish(Event(name="hud.show", payload=payload, priority=10))
+        bus.publish(Event(name="hud.show", payload={"target": target, **data}, priority=10))
         return f"HUD demandé: {target}"
 
     def _log_result(self, result: ActionResult) -> None:
-        self.memory.record_event(
-            "action",
-            f"{result.action}: {'success' if result.success else 'failure'} — {result.message}",
-            source="action_engine",
-        )
+        self.memory.record_event("action", f"{result.action}: {'success' if result.success else 'failure'} — {result.message}", source="action_engine")
 
 
 __all__ = ["ActionEngine", "ActionDefinition", "ActionResult", "ControlMode"]
