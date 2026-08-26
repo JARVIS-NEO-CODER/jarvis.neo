@@ -12,15 +12,9 @@ logger = logging.getLogger("JarvisRuntime")
 
 
 class NeoRuntime:
-    """Connect the core pipeline with explicit lifecycle management."""
+    """Connect core services to the shared event bus with clean lifecycle handling."""
 
-    def __init__(
-        self,
-        bus: Any,
-        context_engine: ContextEngine,
-        automation: AutomationEngine,
-        hud_bridge: HudBridge | None = None,
-    ) -> None:
+    def __init__(self, bus: Any, context_engine: ContextEngine, automation: AutomationEngine, hud_bridge: HudBridge | None = None) -> None:
         self.bus = bus
         self.context_engine = context_engine
         self.automation = automation
