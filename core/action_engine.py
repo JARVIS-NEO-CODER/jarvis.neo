@@ -47,6 +47,8 @@ class ActionEngine:
         return self.mode is ControlMode.FULL_CONTROL and self._full_control_until is not None and datetime.now() < self._full_control_until
 
     def register(self, definition: ActionDefinition) -> None:
+        if not definition.name or not callable(definition.handler):
+            raise ValueError("Une action valide nécessite un nom et un handler callable.")
         self._actions[definition.name] = definition
 
     def set_mode(self, mode: ControlMode) -> None:
