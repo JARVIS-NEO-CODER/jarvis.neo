@@ -31,7 +31,10 @@ class HudBridge:
 
     def _on_hud_show(self, event: Any) -> None:
         payload = getattr(event, "payload", event)
-        data = dict(payload or {})
+        if not isinstance(payload, dict):
+            logger.warning("Ignoring malformed HUD event payload")
+            return
+        data = dict(payload)
         if self.callback is None:
             logger.debug("HUD request received without UI callback: %s", data)
             return
