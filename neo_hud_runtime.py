@@ -1,7 +1,4 @@
-"""Runtime bridge: J.A.R.V.I.S. core <-> NEO HUD.
-
-Keeps assistant.py as the brain while making ui/neo_hud.py the desktop UI.
-"""
+"""Runtime bridge: J.A.R.V.I.S. core <-> NEO HUD."""
 from __future__ import annotations
 
 import sys
@@ -10,6 +7,7 @@ import threading
 from PyQt6.QtWidgets import QApplication
 
 from ui.neo_hud import NeoHud
+from context_engine import ContextEngine
 
 
 def main() -> None:
@@ -18,14 +16,13 @@ def main() -> None:
     # Import the existing assistant only after Qt is ready.
     import assistant as core
 
-    # Start the same background services used by the legacy desktop UI.
-    threading.Thread(target=core.command_worker, daemon=True).start()
-    threading.Thread(target=core.voice_worker, daemon=True).start()
-    threading.Thread(target=core.reminder_worker, daemon=True).start()
-    threading.Thread(target=core.run_web_server, daemon=True).start()
-    threading.Thread(target=core.security_worker, daemon=True).start()
-    threading.Thread(target=core.system_monitor_worker, daemon=True).start()
-    threading.Thread(target=core.retro_vision_worker, daemon=True).start()
+    # Existing NEO services.
+    for worker in (
+        core.command_worker, core.voice_worker, core.reminder_worker,
+        core.run_web_server, core.security_worker, core.system_monitor_worker,
+        core.retro_vision_worker,
+    ):
+        threading.Thread(target=worker, daemon=True).start()
 
     hud = NeoHud()
     hud.setMinimumSize(1000, 650)
@@ -73,9 +70,23 @@ def main() -> None:
         lambda tier: hud.append_terminal("SYSTEM", f"Mode IA : {tier}")
     )
 
-    # Initial state.
+    # Local-first context engine: no Ollama call for routine observation.
+    def on_context(context: str, confidence: float, reason: str) -> None:
+        if context == "gaming" and confidence >= 0.72:
+            hud.append_terminal(
+                "NEO",
+                f"Contexte GAMING détecté ({confidence:.0%}) — {reason}"
+            )
+            hud.set_reactor_state("thinking")
+            # We deliberately do not change Windows settings silently yet.
+            # The learned context is persisted and ready for the Action Engine.
+
+    context_engine = ContextEngine(on_context=on_context).start(interval=15.0)
+    app.aboutToQuit.connect(context_engine.stop)
+
     hud.set_reactor_state("online")
     hud.append_terminal("SYSTEM", "NEO HUD connecté au noyau J.A.R.V.I.S.")
+    hud.append_terminal("SYSTEM", "Context Engine local actif — apprentissage des habitudes")
     hud.show()
 
     core.speech.say("Systèmes quantiques en ligne. Prêt à exécuter vos ordres.")
