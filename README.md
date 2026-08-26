@@ -1,113 +1,241 @@
-# J.A.R.V.I.S. NEO
+# 🧠 J.A.R.V.I.S. NEO
 
-> Assistant personnel local-first, modulaire et orienté contexte.
+> **Un assistant personnel local-first qui comprend son contexte, agit sur le PC et évolue avec son utilisateur.**
 
-J.A.R.V.I.S. NEO est un projet expérimental d'assistant personnel pour PC. L'objectif est de dépasser le simple assistant à commandes : NEO doit pouvoir comprendre le contexte, apprendre des habitudes, exécuter des actions composées et rester contrôlable par l'utilisateur.
+J.A.R.V.I.S. NEO est un projet expérimental qui cherche à aller plus loin qu'un assistant qui attend simplement une commande.
 
-## Vision
+L'idée est de construire un véritable **cockpit personnel** : NEO observe son environnement informatique, comprend ce qui est en train de se passer, adapte son comportement, peut effectuer des actions et présente son état dans une interface HUD futuriste.
 
-NEO est organisé autour de plusieurs briques :
+---
 
-- **Context Engine** — observation locale légère et détection de contextes/habitudes.
-- **Action Engine** — exécution d'actions autorisées avec cooldown et journalisation.
-- **Automation Engine** — déclencheurs, conditions et workflows réversibles.
-- **Performance Manager** — adaptation de la charge de NEO au contexte détecté, notamment le gaming.
-- **Memory / Store** — événements et souvenirs persistants.
-- **Core Bridge** — point d'intégration progressif entre le nouveau Core et l'ancien runtime.
-- **Agent** — traitement d'instructions et orchestration des capacités.
-- **HUD** — interface cockpit et représentation de l'état de NEO.
-- **Plugins** — extension des capacités avec permissions.
-- **Mobile** — contrôle et notifications via le réseau local.
-- **Security / Privacy** — permissions, appareils autorisés et futurs mécanismes de coupure d'urgence.
+## 🚀 Le concept
 
-## Architecture actuelle
+Imagine un assistant qui ne se contente pas de répondre à :
 
-Le nouveau cœur est regroupé dans `core/` afin d'éviter de concentrer toute la logique dans `assistant.py`.
+> « Lance ETS2. »
+
+Mais qui peut progressivement comprendre :
+
+> « Il est 20h, ETS2 vient de démarrer, le PC est déjà très sollicité… c'est probablement une session de jeu. »
+
+NEO peut alors adapter son fonctionnement : réduire les tâches lourdes, changer son contexte, préparer les automatisations pertinentes et garder une trace locale de ce qui s'est passé.
+
+**Le but n'est pas seulement d'avoir une IA qui parle. Le but est d'avoir un système qui comprend le contexte autour d'elle.**
+
+---
+
+## 🧩 Le cerveau de NEO
+
+Le projet est progressivement séparé en plusieurs briques spécialisées :
+
+| Module | Rôle |
+|---|---|
+| 👁️ **Context Engine** | Comprend ce qui se passe sur le PC et détecte les contextes. |
+| 🧠 **Memory** | Conserve les événements et informations utiles localement. |
+| ⚙️ **Action Engine** | Exécute des actions explicitement autorisées et vérifiables. |
+| 🔄 **Automation Engine** | Transforme les contextes en règles et automatisations. |
+| ⚡ **Performance Manager** | Adapte la charge de NEO aux ressources disponibles. |
+| 🔌 **Core Bridge** | Relie progressivement le nouveau cœur au runtime historique. |
+| 🤖 **Agent / IA** | Traite les demandes et orchestre les capacités. |
+| 🎨 **HUD** | Représente l'état de NEO dans une interface cockpit. |
+| 🧩 **Plugins** | Permet d'ajouter des capacités avec des permissions. |
+| 📱 **Mobile** | Étend le contrôle et les notifications au téléphone. |
+
+---
+
+## 🏗️ Architecture
 
 ```text
-J.A.R.V.I.S. NEO
-│
-├── assistant.py              # runtime historique / interface actuelle
-│
-└── core/
-    ├── memory.py             # stockage et historique local
-    ├── context_engine.py     # détection du contexte
-    ├── action_engine.py      # actions autorisées
-    ├── automation.py         # règles et automatisations
-    ├── performance_manager.py # adaptation de la charge
-    └── core_bridge.py        # raccord progressif avec assistant.py
+                         J.A.R.V.I.S. NEO
+                                  │
+              ┌───────────────────┼───────────────────┐
+              ▼                   ▼                   ▼
+        👁️ Contexte          🧠 Mémoire           🤖 IA / Agent
+              │                   │                   │
+              └───────────────────┼───────────────────┘
+                                  ▼
+                           ⚙️ Action Engine
+                                  │
+                           🔄 Automation
+                                  │
+                ┌─────────────────┼─────────────────┐
+                ▼                 ▼                 ▼
+             🖥️ PC              🎨 HUD            📱 Mobile
 ```
 
-Le `CoreBridge` reste volontairement léger : il ne démarre pas de thread autonome et ne déclenche pas Ollama de lui-même. Le runtime principal décide quand exécuter un cycle, ce qui permet de limiter la consommation sur les machines peu puissantes.
+Le nouveau cœur vit dans `core/` afin de ne plus concentrer toute la logique dans `assistant.py`.
 
-## Context Engine
+```text
+core/
+├── memory.py
+├── context_engine.py
+├── action_engine.py
+├── automation.py
+├── performance_manager.py
+└── core_bridge.py
+```
 
-Le moteur fonctionne localement et ne fait pas d'appel LLM pour détecter le contexte. Il peut observer des processus autorisés, détecter des signaux de gaming, tenir compte de l'heure et du jour, apprendre à partir des activations manuelles, enregistrer les événements dans SQLite et produire un niveau de confiance pour un contexte.
+Le `CoreBridge` est volontairement léger : il ne lance pas lui-même Ollama et ne crée pas de boucle autonome. Le runtime principal décide quand exécuter un cycle, ce qui permet de garder NEO utilisable sur des machines modestes.
 
-La base est stockée localement et l'état courant peut être conservé pour permettre à NEO de reprendre son contexte après un redémarrage.
+---
 
-## Action Engine
+## 🎮 NEO comprend le contexte
 
-`core/action_engine.py` fournit un registre d'actions explicites. Il ne lance pas arbitrairement des commandes shell : les actions doivent être enregistrées dans le moteur.
+Le **Context Engine** fonctionne localement et ne nécessite pas de requête LLM pour détecter un contexte.
 
-L'action `gaming_mode` est prévue pour appeler le processeur NEO avec `active le mode gaming` lorsque le contexte gaming atteint un niveau de confiance suffisant. Un cooldown évite les déclenchements répétés.
+Il peut combiner plusieurs signaux :
 
-## Performance et gaming
+- processus actifs ;
+- heure et jour ;
+- activations manuelles ;
+- historique local ;
+- signaux liés au gaming ;
+- autres indicateurs système.
 
-Le **Performance Manager** permet de définir des profils de charge afin que les fonctions lourdes de NEO puissent être réduites lorsque le PC est déjà sollicité.
+L'objectif est de passer progressivement de simples règles à une compréhension plus riche des habitudes quotidiennes.
 
-L'objectif est notamment d'éviter que la surveillance permanente, la vision ou les appels IA ne consomment inutilement des ressources pendant un jeu comme ETS2.
+### Exemple
 
-Les décisions de performance restent locales et ne nécessitent pas de requête Ollama.
+```text
+ETS2 démarre
+     ↓
+Contexte gaming détecté
+     ↓
+Confiance suffisante
+     ↓
+🎮 Gaming Mode
+     ↓
+NEO réduit les fonctions lourdes
+```
 
-## Philosophie de sécurité
+Tout cela peut fonctionner **sans demander à Ollama de décider à chaque seconde**.
 
-NEO doit rester **local-first**, explicite et réversible autant que possible.
+---
 
-Les futures fonctionnalités de surveillance, vision, mémoire et domotique devront être désactivables et protégées par des permissions claires. Les actions sensibles devront demander une confirmation avant exécution.
+## ⚡ Respecter le PC
 
-## Prochaines étapes
+NEO doit être intelligent **sans devenir le programme qui ralentit tout le reste**.
 
-### Intelligence
-- planification multi-étapes ;
-- vérification des actions ;
-- correction après échec ;
-- mémoire contextuelle ;
-- RAG personnel local ;
-- apprentissage par feedback.
+Le Performance Manager permet de réduire la fréquence ou de désactiver certaines fonctions coûteuses selon le contexte.
 
-### Contexte
-- habitudes quotidiennes ;
-- détection gaming / travail / étude / création ;
-- comptes rendus d'absence ;
-- contexte multi-signal.
+C'est particulièrement important pendant les jeux : l'objectif est que NEO puisse rester présent sans venir manger inutilement les ressources du PC.
 
-### Interface
-- HUD cockpit complet ;
-- états `IDLE`, `LISTENING`, `THINKING`, `EXECUTING`, `SPEAKING`, `SENTINEL` ;
-- timeline d'actions ;
-- feedback rapide ;
-- animations et fenêtres contextuelles synchronisées avec les réponses vocales.
+---
 
-### Audio
-- sound design contextuel ;
-- voix adaptative ;
-- mode silencieux selon le contexte.
+## 🎨 Le cockpit HUD
 
-### Écosystème
-- application mobile ;
-- canal local chiffré ;
-- domotique locale ;
-- système de plugins avancé.
+Le HUD est pensé comme une véritable interface de cockpit plutôt qu'une simple fenêtre de chat.
 
-### Confidentialité
-- Panic / Privacy Mode ;
-- arrêt immédiat des capteurs ;
-- stockage local protégé ;
-- contrôles de rétention des historiques.
+À terme, il doit pouvoir représenter les états de NEO :
 
-## Développement
+`IDLE` → `LISTENING` → `THINKING` → `EXECUTING` → `SPEAKING`
 
-Le projet est principalement Python et utilise notamment SQLite, FastAPI/Uvicorn, `psutil`, PyQt6 et Ollama selon les composants installés. Certains modules sont optionnels et doivent rester capables de fonctionner lorsque leurs dépendances ne sont pas disponibles.
+et afficher des informations contextuelles au bon moment.
 
-**Important :** le projet évolue rapidement. Avant une modification importante, créer un commit afin de pouvoir revenir en arrière facilement.
+Une idée importante du projet est que **la réponse et l'interface évoluent ensemble** : lorsque NEO parle d'un sujet, il peut afficher une fenêtre, une donnée ou une visualisation pertinente au même moment.
+
+Le HUD doit également intégrer des animations et des transitions afin de donner à NEO une présence plus naturelle.
+
+---
+
+## 🔊 Une présence, pas seulement une voix
+
+NEO doit pouvoir adapter sa communication au contexte :
+
+- 🔊 voix et effets sonores lorsque c'est pertinent ;
+- 🔇 mode silencieux lorsque parler serait gênant ;
+- 🎧 retours audio discrets pour les états du système ;
+- 🖥️ notifications et informations visuelles lorsque l'audio n'est pas approprié.
+
+L'objectif est d'éviter l'effet « robot qui parle en permanence » et de construire une vraie couche d'interaction.
+
+---
+
+## 🧠 Mémoire et apprentissage
+
+NEO doit pouvoir conserver localement les événements utiles et apprendre progressivement des habitudes.
+
+Une évolution prévue est un système de feedback simple : si une automatisation est incorrecte, l'utilisateur peut l'indiquer et NEO peut ajuster son comportement futur.
+
+À plus long terme, le projet vise également une **base de connaissances personnelle locale** capable de retrouver des notes, documents et ressources de travail sans envoyer ces données vers le cloud.
+
+---
+
+## 📱 Un écosystème autour du PC
+
+Le PC n'est pas forcément le seul point d'accès à NEO.
+
+Le projet prévoit :
+
+- 📱 contrôle et notifications mobiles ;
+- 🔐 communication locale sécurisée ;
+- 🏠 intégration domotique locale ;
+- 🧩 plugins pour étendre les capacités.
+
+L'objectif est de construire un écosystème cohérent plutôt qu'une simple application isolée.
+
+---
+
+## 🔐 Contrôle et confidentialité
+
+NEO est pensé **local-first** et doit rester contrôlable par l'utilisateur.
+
+Les fonctions sensibles devront être protégées par des permissions et des confirmations explicites.
+
+Une fonctionnalité **Panic / Privacy Mode** est prévue pour permettre de couper rapidement les fonctions de surveillance et les capteurs concernés.
+
+La philosophie est simple : **NEO peut être puissant, mais l'utilisateur doit toujours pouvoir reprendre le contrôle.**
+
+---
+
+## 🛠️ État du projet
+
+Le projet est en développement actif. Le nouveau cœur modulaire est déjà en place, tandis que l'intégration complète avec le runtime historique est progressive.
+
+### Déjà construit
+
+- 🧠 mémoire locale SQLite ;
+- 👁️ détection de contexte ;
+- ⚙️ registre d'actions ;
+- 🔄 moteur d'automatisation ;
+- ⚡ gestionnaire de performances ;
+- 🔌 pont d'intégration du Core ;
+- 🧪 premiers tests du nouveau cœur ;
+- 📖 documentation de l'architecture.
+
+### En développement / prévu
+
+- 🧠 planification multi-étapes ;
+- ✅ vérification et correction après action ;
+- 🔄 apprentissage par feedback ;
+- 🗄️ RAG personnel local ;
+- 🕒 compréhension des habitudes quotidiennes ;
+- 📝 comptes rendus d'absence ;
+- 🎨 HUD animé et contextuel ;
+- 🔊 audio adaptatif ;
+- 📱 continuité mobile ;
+- 🏠 domotique locale ;
+- 🔐 Panic / Privacy Mode avancé ;
+- 🧩 système de plugins avancé.
+
+---
+
+## 💡 Pourquoi NEO ?
+
+Parce qu'un assistant personnel ne devrait pas être uniquement une zone de texte avec une voix.
+
+**NEO cherche à réunir intelligence, contexte, automatisation, interface et contrôle local dans un seul système.**
+
+Et le projet évolue petit à petit vers cette idée :
+
+> ### **Un ordinateur qui ne se contente plus d'exécuter des commandes, mais qui comprend ce que son utilisateur est en train de faire.**
+
+---
+
+## 👨‍💻 Développement
+
+NEO est principalement développé en Python et utilise notamment SQLite, FastAPI/Uvicorn, `psutil`, PyQt6 et Ollama selon les composants.
+
+Le projet évolue rapidement : les fonctionnalités présentées dans cette README ne sont pas toutes finalisées ou intégrées au runtime principal.
+
+Pour éviter les régressions, les modifications importantes doivent être commit avant de poursuivre le développement.
