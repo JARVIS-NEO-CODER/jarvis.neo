@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>J.A.R.V.I.S. NEO Mobile</title>
+  <style>
+    :root{color-scheme:dark;font-family:Inter,system-ui,sans-serif;background:#07110f;color:#eafff8}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at top,#12352d,#07110f 55%);padding:18px}
+    main{max-width:620px;margin:auto}.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}.brand{font-weight:800;letter-spacing:.08em}.status{font-size:.8rem;padding:7px 10px;border:1px solid #28564b;border-radius:999px}
+    .hero,.card{background:rgba(10,27,23,.78);border:1px solid #1d4038;border-radius:22px;box-shadow:0 12px 40px rgba(0,0,0,.25);backdrop-filter:blur(14px)}
+    .hero{text-align:center;padding:30px 20px;margin-bottom:14px}.core{width:92px;height:92px;margin:auto;border-radius:50%;display:grid;place-items:center;border:2px solid #5dffd7;box-shadow:0 0 35px rgba(93,255,215,.35);font-size:2rem}.hero h1{margin:18px 0 6px}.muted{color:#8bb8ad}
+    .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}.card{padding:17px}.card strong{display:block;margin-bottom:6px}.value{font-size:1.35rem;font-weight:800}.wide{grid-column:1/-1}.controls{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.btn{border:1px solid #28564b;background:#102a24;color:#eafff8;border-radius:14px;padding:13px;font-weight:700}.btn:active{transform:scale(.98)}
+    .chat{margin-top:14px;padding:16px}.chatrow{display:flex;gap:8px}.chat input{flex:1;min-width:0;border:1px solid #28564b;background:#081914;color:#fff;border-radius:13px;padding:12px}.chat button{border:0;border-radius:13px;padding:12px 16px;font-weight:800}
+  </style>
+</head>
+<body>
+<main>
+  <div class="top"><div class="brand">J.A.R.V.I.S. NEO</div><div class="status">● PC connecté</div></div>
+  <section class="hero"><div class="core">✦</div><h1>Bonjour</h1><div class="muted">Votre assistant local est prêt.</div></section>
+  <section class="grid">
+    <div class="card"><strong>Mode</strong><span class="value" id="mode">Général</span></div>
+    <div class="card"><strong>CPU</strong><span class="value" id="cpu">--</span></div>
+    <div class="card"><strong>RAM</strong><span class="value" id="ram">--</span></div>
+    <div class="card"><strong>Sentinelle</strong><span class="value" id="sentinel">Inactive</span></div>
+    <div class="card wide"><strong>Commandes</strong><div class="controls"><button class="btn">🎮 Gaming</button><button class="btn">🛡️ Sentinelle</button><button class="btn">🔔 Notifications</button><button class="btn">⚙️ Automatisations</button></div></div>
+  </section>
+  <section class="card chat"><strong>Parler à JARVIS</strong><div class="chatrow"><input placeholder="Écris une commande…"><button>Envoyer</button></div></section>
+</main>
+</body>
+</html>
