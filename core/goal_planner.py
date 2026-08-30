@@ -29,7 +29,7 @@ class GoalRunResult:
 
 
 class GoalPlanner:
-    """Build deterministic plans and optionally delegate planning to Ollama."""
+    """Build deterministic plans and optionally delegate planning to an LLM."""
 
     def __init__(
         self,
@@ -39,8 +39,19 @@ class GoalPlanner:
         self.action_engine = action_engine
         self.llm_planner = llm_planner
 
+    @classmethod
+    def with_ollama(
+        cls,
+        action_engine: ActionEngine,
+        *,
+        model: str = "llama3.2:3b",
+        base_url: str = "http://127.0.0.1:11434",
+        timeout: float = 60.0,
+    ) -> "GoalPlanner":
+        from .ollama_planner import OllamaPlanner
+        return cls(action_engine, OllamaPlanner(model=model, base_url=base_url, timeout=timeout))
+
     def available_actions(self) -> tuple[str, ...]:
-        """Return registered action names without exposing handlers."""
         return tuple(sorted(self.action_engine._actions))
 
     def plan(self, objective: str) -> GoalPlan:
@@ -53,20 +64,19 @@ class GoalPlanner:
             return deterministic
 
         if self.llm_planner is not None:
-            return self._parse_llm_plan(objective, self.llm_planner(objective, self.available_actions()))
+            raw = self.llm_planner(objective, self.available_actions())
+            return self._parse_llm_plan(objective, raw)
 
         raise ValueError("Aucun plan sûr et déterministe n'est disponible pour cet objectif.")
 
     def _deterministic_plan(self, objective: str) -> GoalPlan | None:
-        normalized = objective.lower()
-        if "notification" in normalized:
+        if "notification" in objective.lower():
             return GoalPlan(objective, (
                 GoalStep("action.notify", {"message": objective}, "Notifier l'utilisateur."),
             ))
         return None
 
     def _parse_llm_plan(self, objective: str, raw: Any) -> GoalPlan:
-        """Validate an LLM-produced plan before it can reach ActionEngine."""
         if isinstance(raw, dict):
             raw_steps = raw.get("steps", [])
         else:
