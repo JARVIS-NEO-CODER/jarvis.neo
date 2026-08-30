@@ -1,9 +1,15 @@
 """Safe action execution layer for J.A.R.V.I.S. NEO."""
 from __future__ import annotations
 
+import os
+import platform
+import subprocess
+import sys
+import webbrowser
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
+from pathlib import Path
 from typing import Any, Callable
 
 from .memory import NeoMemory
@@ -32,7 +38,7 @@ class ActionDefinition:
 
 
 class ActionEngine:
-    """Execute only registered actions allowed by the current control mode."""
+    """Execute only registered, permission-gated and verifiable actions."""
 
     def __init__(self, memory: NeoMemory | None = None, event_bus: Any | None = None) -> None:
         self.memory = memory or NeoMemory()
@@ -74,6 +80,10 @@ class ActionEngine:
             result = ActionResult(action_name, False, "Action inconnue.")
             self._log_result(result)
             return result
+        if definition.minimum_mode is ControlMode.AGENT and self.mode is ControlMode.NORMAL:
+            result = ActionResult(action_name, False, "Cette action nécessite le mode AGENT.")
+            self._log_result(result)
+            return result
         if definition.minimum_mode is ControlMode.FULL_CONTROL and not self.full_control_active:
             result = ActionResult(action_name, False, "Cette action nécessite le mode FULL_CONTROL.")
             self._log_result(result)
@@ -97,6 +107,11 @@ class ActionEngine:
         self.register(ActionDefinition("action.set_state", self._set_state, ControlMode.NORMAL, "Publish a safe internal state update."))
         self.register(ActionDefinition("action.publish_event", self._publish_event, ControlMode.NORMAL, "Publish an explicitly named bus event."))
         self.register(ActionDefinition("action.show_hud", self._show_hud, ControlMode.NORMAL, "Request a HUD view."))
+        self.register(ActionDefinition("action.open_url", self._open_url, ControlMode.NORMAL, "Open a validated HTTP(S) URL in the default browser."))
+        self.register(ActionDefinition("action.open_path", self._open_path, ControlMode.AGENT, "Open an existing local file or directory."))
+        self.register(ActionDefinition("action.launch_app", self._launch_app, ControlMode.AGENT, "Launch an explicitly named local application."))
+        self.register(ActionDefinition("action.create_directory", self._create_directory, ControlMode.AGENT, "Create a local directory."))
+        self.register(ActionDefinition("action.write_text_file", self._write_text_file, ControlMode.FULL_CONTROL, "Write UTF-8 text to a local file."))
 
     def _require_bus(self) -> Any:
         if self._event_bus is None:
@@ -133,6 +148,59 @@ class ActionEngine:
         from .bus import Event
         bus.publish(Event(name="hud.show", payload={"target": target, **data}, priority=10))
         return f"HUD demandé: {target}"
+
+    @staticmethod
+    def _open_url(url: str) -> str:
+        url = url.strip()
+        if not (url.startswith("https://") or url.startswith("http://")):
+            raise ValueError("Seules les URLs HTTP(S) sont autorisées.")
+        if not webbrowser.open(url, new=2):
+            raise RuntimeError("Le navigateur n'a pas accepté l'ouverture de l'URL.")
+        return f"URL ouverte: {url}"
+
+    @staticmethod
+    def _open_path(path: str) -> str:
+        target = Path(path).expanduser().resolve()
+        if not target.exists():
+            raise FileNotFoundError(f"Chemin introuvable: {target}")
+        system = platform.system()
+        if system == "Windows":
+            os.startfile(str(target))
+        elif system == "Darwin":
+            subprocess.Popen(["open", str(target)])
+        elif system == "Linux":
+            subprocess.Popen(["xdg-open", str(target)])
+        else:
+            raise RuntimeError(f"Système non pris en charge: {system}")
+        return f"Chemin ouvert: {target}"
+
+    @staticmethod
+    def _launch_app(command: str, args: list[str] | None = None) -> str:
+        command = command.strip()
+        if not command:
+            raise ValueError("Le nom de l'application est obligatoire.")
+        if any(part in command for part in ("&", "|", ";", ">", "<", "`")):
+            raise ValueError("Commande refusée: caractères shell détectés.")
+        argv = [command] + [str(x) for x in (args or [])]
+        subprocess.Popen(argv, shell=False, start_new_session=True)
+        return f"Application lancée: {command}"
+
+    @staticmethod
+    def _create_directory(path: str) -> str:
+        target = Path(path).expanduser().resolve()
+        target.mkdir(parents=True, exist_ok=True)
+        if not target.is_dir():
+            raise RuntimeError("Le chemin créé n'est pas un dossier.")
+        return f"Dossier prêt: {target}"
+
+    @staticmethod
+    def _write_text_file(path: str, content: str = "", encoding: str = "utf-8") -> str:
+        target = Path(path).expanduser().resolve()
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding=encoding)
+        if target.read_text(encoding=encoding) != content:
+            raise RuntimeError("Vérification d'écriture échouée.")
+        return f"Fichier écrit et vérifié: {target}"
 
     def _log_result(self, result: ActionResult) -> None:
         self.memory.record_event("action", f"{result.action}: {'success' if result.success else 'failure'} — {result.message}", source="action_engine")
