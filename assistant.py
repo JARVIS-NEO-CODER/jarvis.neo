@@ -247,6 +247,7 @@ import pyautogui
 import speech_recognition as sr
 import pyperclip
 import requests
+from core.conversation_ai import ConversationAI
 
 try:
     import numpy as np
@@ -1589,7 +1590,8 @@ class CommandProcessor:
         return f"C'est compris. Je vous rappellerai de '{task}' dans {val} {unit}."
 
     def ask_ai(self, text: str) -> str:
-        if not ollama: return "L'intelligence artificielle Ollama n'est pas installée."
+        if not getattr(self, "conversation_ai", None):
+    self.conversation_ai = ConversationAI(CONFIG)
         state.is_processing = True
         signals.status_change.emit("RÉFLEXION")
         try:
@@ -1643,7 +1645,7 @@ Modèle : {chat_model}
                 messages.append({"role": "system", "content": "Mémoire pertinente (peut être incomplète) :\n" + "\n".join(item["content"] for item in relevant_memories)})
             messages.extend(history)
             messages.append({"role": "user", "content": text})
-            client = ollama.Client()
+            response = self.conversation_ai.chat(messages)
             response = client.chat(model=chat_model, messages=messages)
             state.is_processing = False
             signals.status_change.emit("OPÉRATIONNEL")
