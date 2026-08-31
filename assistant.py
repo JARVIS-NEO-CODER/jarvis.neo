@@ -1337,7 +1337,7 @@ class CommandProcessor:
         }
 
         self.intents = {
-            r"ouvre\s+(.+)": self.open_app,                      
+            r"ouvre\s+(.+)": tools.open_application,                      
             r"ferme\s+(.+)|tue\s+(.+)": self.kill_app,           
             r"rappelle-moi de\s+(.+)\s+dans\s+(\d+)\s*(seconde|secondes|minute|minutes|heure|heures)": self.set_reminder, 
             r"cherche\s+(.+)": self.web_search,                  
@@ -1587,19 +1587,33 @@ class CommandProcessor:
         delay = val * multiplier
         target_time = time.time() + delay
         memory.add_reminder(task, target_time)
-        return f"C'est compris. Je vous rappellerai de '{task}' dans {val} {unit}."
+        return f"C'est compris. Je vous rappellerai de faire '{task}' dans {val} {unit}."
 
+    def kill_app(self, name1, name2=None):
+        name = name1 if name1 else name2
+        if not name:
+            return "Nom de programme invalide."
+
+        ok, message = tools.close_application(name)
+        return message
     def ask_ai(self, text: str) -> str:
-        if not getattr(self, "conversation_ai", None):
-    self.conversation_ai = ConversationAI(CONFIG)
-        state.is_processing = True
-        signals.status_change.emit("RÉFLEXION")
-        try:
-            history = memory.get_history(12)
-            relevant_memories = memory.search_memory(text, 5)
-            tier_label = MODEL_TIERS.get(state.current_model_tier, {}).get("label", "Personnalisé")
-            chat_model = get_active_model(vision=False)
-            messages = [{"role": "system", "content": f"""
+    if not hasattr(self, "conversation_ai"):
+        self.conversation_ai = ConversationAI(CONFIG)
+
+    state.is_processing = True
+    signals.status_change.emit("RÉFLEXION")
+
+    try:
+        history = memory.get_history(12)
+        relevant_memories = memory.search_memory(text, 5)
+        tier_label = MODEL_TIERS.get(
+            state.current_model_tier, {}
+        ).get("label", "Personnalisé")
+        chat_model = get_active_model(vision=False)
+
+        messages = [{
+            "role": "system",
+            "content": f"""
 Tu es J.A.R.V.I.S. NEO, l'assistant personnel informatique de ton utilisateur.
 
 IDENTITÉ :
@@ -1640,20 +1654,35 @@ J.A.R.V.I.S. : "Je suis J.A.R.V.I.S. NEO, votre assistant personnel."
 CONFIGURATION ACTUELLE :
 Mode : {tier_label}
 Modèle : {chat_model}
-"""}]
-            if relevant_memories:
-                messages.append({"role": "system", "content": "Mémoire pertinente (peut être incomplète) :\n" + "\n".join(item["content"] for item in relevant_memories)})
-            messages.extend(history)
-            messages.append({"role": "user", "content": text})
-            response = self.conversation_ai.chat(messages)
-            response = client.chat(model=chat_model, messages=messages)
-            state.is_processing = False
-            signals.status_change.emit("OPÉRATIONNEL")
-            return response['message']['content']
-        except Exception as e:
-            state.is_processing = False
-            signals.status_change.emit("ERREUR")
-            return f"Erreur noyau IA : {e}"
+"""
+        }]
+
+        if relevant_memories:
+            messages.append({
+                "role": "system",
+                "content": "Mémoire pertinente (peut être incomplète) :\n"
+                + "\n".join(
+                    item["content"] for item in relevant_memories
+                )
+            })
+
+        messages.extend(history)
+        messages.append({
+            "role": "user",
+            "content": text
+        })
+
+        response = self.conversation_ai.chat(messages)
+
+        state.is_processing = False
+        signals.status_change.emit("OPÉRATIONNEL")
+
+        return response["message"]["content"]
+
+    except Exception as e:
+        state.is_processing = False
+        signals.status_change.emit("ERREUR")
+        return f"Erreur noyau IA : {e}"
 
     def get_weather(self):
         try:
@@ -1681,12 +1710,6 @@ Modèle : {chat_model}
             gpu = metrics["gpu"]
             parts.append(f"GPU: {gpu['percent']}% | VRAM: {gpu['vram_used_mb']}/{gpu['vram_total_mb']} Mo | GPU: {gpu['temperature_c']}°C")
         return " | ".join(parts)
-
-    def kill_app(self, name1, name2=None):
-        name = name1 if name1 else name2
-        if not name: return "Nom de programme invalide."
-        ok, message = tools.close_application(name)
-        return message
 
     def _legacy_kill_app_unsafe(self, name1, name2=None):
         name = name1 if name1 else name2
@@ -2023,7 +2046,11 @@ Modèle : {chat_model}
             "'décharge le plugin [nom]', 'liste les plugins', "
             "'exécute plugin [nom] [commande]'."
         )
-
+print("DEBUG web_search :", hasattr(CommandProcessor, "web_search"))
+print("DEBUG open_app   :", hasattr(CommandProcessor, "open_app"))
+print("DEBUG kill_app   :", hasattr(CommandProcessor, "kill_app"))
+print("DEBUG MRO :", CommandProcessor.__mro__)
+print("DEBUG DICT :", [k for k in CommandProcessor.__dict__ if "app" in k.lower() or "web" in k.lower()])
 processor = CommandProcessor()
 
 # --- MODULES ET FENÊTRES SECONDAIRES ---
