@@ -1,0 +1,129 @@
+name: Apply Groq HUD
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Patch JARVIS HUD and Groq settings
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('assistant.py')
+          text = path.read_text(encoding='utf-8')
+
+          if 'class GroqSettingsWidget(QWidget):' not in text:
+              marker = 'class NtfySettingsWidget(QWidget):'
+              widget = r'''class GroqSettingsWidget(QWidget):
+              """Local Groq/Ollama conversation provider settings."""
+              def __init__(self, parent=None):
+                  super().__init__(parent)
+                  layout = QVBoxLayout(self)
+                  layout.addWidget(QLabel("🧠 FOURNISSEUR IA — GROQ / OLLAMA"))
+
+                  layout.addWidget(QLabel("Clé API Groq"))
+                  self.api_key = QLineEdit(CONFIG.get("groq_api_key", ""))
+                  self.api_key.setEchoMode(QLineEdit.EchoMode.Password)
+                  self.api_key.setPlaceholderText("gsk_...")
+                  layout.addWidget(self.api_key)
+
+                  layout.addWidget(QLabel("Modèle Groq"))
+                  self.model = QLineEdit(CONFIG.get("groq_model", "openai/gpt-oss-20b"))
+                  self.model.setPlaceholderText("openai/gpt-oss-20b")
+                  layout.addWidget(self.model)
+
+                  self.enabled = QCheckBox("Activer Groq pour les conversations")
+                  self.enabled.setChecked(CONFIG.get("ai_provider", "groq") == "groq")
+                  layout.addWidget(self.enabled)
+
+                  self.fallback = QCheckBox("Fallback automatique vers Ollama")
+                  self.fallback.setChecked(CONFIG.get("ollama_enabled", True))
+                  layout.addWidget(self.fallback)
+
+                  buttons = QHBoxLayout()
+                  self.btn_save = GlowButton("💾 ENREGISTRER", state.theme_color)
+                  self.btn_save.clicked.connect(self.save_settings)
+                  buttons.addWidget(self.btn_save)
+                  self.btn_test = GlowButton("🧪 TESTER GROQ", state.secondary_color)
+                  self.btn_test.clicked.connect(self.test_groq)
+                  buttons.addWidget(self.btn_test)
+                  layout.addLayout(buttons)
+
+                  self.status = QLabel("Statut : configuration locale")
+                  self.status.setWordWrap(True)
+                  layout.addWidget(self.status)
+
+              def save_settings(self):
+                  CONFIG["groq_api_key"] = self.api_key.text().strip()
+                  CONFIG["groq_model"] = self.model.text().strip() or "openai/gpt-oss-20b"
+                  CONFIG["ai_provider"] = "groq" if self.enabled.isChecked() else "ollama"
+                  CONFIG["ollama_enabled"] = self.fallback.isChecked()
+                  save_config(CONFIG)
+                  try:
+                      processor.conversation_ai = ConversationAI(CONFIG, ollama)
+                  except Exception:
+                      pass
+                  self.status.setText("Statut : paramètres enregistrés. Le prochain message utilisera la nouvelle configuration.")
+                  signals.log_msg.emit("IA", f"Fournisseur configuré : {CONFIG['ai_provider']} — Groq : {'configuré' if CONFIG['groq_api_key'] else 'non configuré'}")
+
+              def test_groq(self):
+                  key = self.api_key.text().strip()
+                  if not key:
+                      self.status.setText("Statut : clé API Groq manquante.")
+                      return
+                  try:
+                      from core.groq_provider import GroqProvider
+                      provider = GroqProvider(api_key=key, model=self.model.text().strip() or "openai/gpt-oss-20b", timeout=15)
+                      result = provider.chat([{"role": "user", "content": "Réponds uniquement par OK."}], temperature=0, max_tokens=8)
+                      self.status.setText(f"Statut : Groq opérationnel — réponse : {result.strip()}")
+                  except Exception as exc:
+                      self.status.setText(f"Statut : test Groq échoué. Fallback Ollama disponible si activé.\n{exc}")
+
+          '''
+              if marker not in text:
+                  raise SystemExit('Marker NtfySettingsWidget introuvable')
+              text = text.replace(marker, widget + marker, 1)
+
+          if 'groq_api_key' not in text:
+              needle = '    "web_port": 8888,\n'
+              replacement = needle + '    "ai_provider": "groq",\n    "groq_api_key": "",\n    "groq_model": "openai/gpt-oss-20b",\n    "groq_timeout": 60,\n    "ollama_enabled": True,\n'
+              if needle not in text:
+                  raise SystemExit('DEFAULT_CONFIG marker introuvable')
+              text = text.replace(needle, replacement, 1)
+
+          if 'self.chk_groq' not in text:
+              needle = '        self.chk_ntfy = QCheckBox("Réseau Mobile (NTFY)")\n        self.chk_ntfy.stateChanged.connect(lambda state_val: self.toggle_sub_window("Notifications NTFY", NtfySettingsWidget(), state_val))\n        self.left_panel.addWidget(self.chk_ntfy)\n'
+              replacement = needle + '\n        self.chk_groq = QCheckBox("🧠 Paramètres IA — Groq / Ollama")\n        self.chk_groq.stateChanged.connect(lambda state_val: self.toggle_sub_window("Paramètres IA", GroqSettingsWidget(), state_val))\n        self.left_panel.addWidget(self.chk_groq)\n'
+              if needle not in text:
+                  raise SystemExit('HUD NTFY marker introuvable')
+              text = text.replace(needle, replacement, 1)
+
+          path.write_text(text, encoding='utf-8')
+          print('Groq HUD patch applied')
+          PY
+
+      - name: Syntax check
+        run: python -m py_compile assistant.py core/conversation_ai.py core/groq_provider.py core/ai_provider_router.py
+
+      - name: Commit changes
+        run: |
+          git config user.name "JARVIS-NEO-CODER"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add assistant.py
+          git diff --cached --quiet || git commit -m "feat: add Groq settings to NEO HUD"
+          git push
+
+      - name: Remove workflow
+        if: always()
+        run: |
+          git rm -f .github/workflows/apply-groq-hud.yml || true
+          git commit -m "chore: remove temporary Groq HUD workflow" || true
+          git push || true
