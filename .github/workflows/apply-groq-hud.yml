@@ -1,0 +1,45 @@
+name: Apply Groq HUD
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.event.head_commit.message != 'feat: add Groq HUD settings'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Patch Groq settings
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('assistant.py')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace('openai/gpt-oss-20b', 'llama-3.1-8b-instant')
+          path.write_text(text, encoding='utf-8')
+          print('Groq default model set to llama-3.1-8b-instant')
+          PY
+
+      - name: Syntax check
+        run: python -m py_compile assistant.py core/conversation_ai.py core/groq_provider.py core/ai_provider_router.py
+
+      - name: Commit changes
+        run: |
+          git config user.name "JARVIS-NEO-CODER"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add assistant.py
+          git diff --cached --quiet || git commit -m "feat: add Groq HUD settings"
+          git push
+
+      - name: Remove temporary workflow
+        if: always()
+        run: |
+          git rm -f .github/workflows/apply-groq-hud.yml || true
+          git commit -m "chore: remove temporary Groq HUD workflow" || true
+          git push || true
