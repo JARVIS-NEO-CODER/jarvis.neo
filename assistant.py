@@ -2181,6 +2181,65 @@ class MacrosWidget(QWidget):
             signals.log_msg.emit("Macros", msg)
             processor.execute_macro("macro_personnalisee")
 
+class GroqSettingsWidget(QWidget):
+    """Local Groq/Ollama conversation provider settings."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel("🧠 FOURNISSEUR IA — GROQ / OLLAMA"))
+        layout.addWidget(QLabel("Clé API Groq"))
+        self.api_key = QLineEdit(CONFIG.get("groq_api_key", ""))
+        self.api_key.setEchoMode(QLineEdit.EchoMode.Password)
+        self.api_key.setPlaceholderText("gsk_...")
+        layout.addWidget(self.api_key)
+        layout.addWidget(QLabel("Modèle Groq"))
+        self.model = QLineEdit(CONFIG.get("groq_model", "openai/gpt-oss-20b"))
+        self.model.setPlaceholderText("openai/gpt-oss-20b")
+        layout.addWidget(self.model)
+        self.enabled = QCheckBox("Activer Groq pour les conversations")
+        self.enabled.setChecked(CONFIG.get("ai_provider", "groq") == "groq")
+        layout.addWidget(self.enabled)
+        self.fallback = QCheckBox("Fallback automatique vers Ollama")
+        self.fallback.setChecked(CONFIG.get("ollama_enabled", True))
+        layout.addWidget(self.fallback)
+        buttons = QHBoxLayout()
+        self.btn_save = GlowButton("💾 ENREGISTRER", state.theme_color)
+        self.btn_save.clicked.connect(self.save_settings)
+        buttons.addWidget(self.btn_save)
+        self.btn_test = GlowButton("🧪 TESTER GROQ", state.secondary_color)
+        self.btn_test.clicked.connect(self.test_groq)
+        buttons.addWidget(self.btn_test)
+        layout.addLayout(buttons)
+        self.status = QLabel("Statut : configuration locale")
+        self.status.setWordWrap(True)
+        layout.addWidget(self.status)
+
+    def save_settings(self):
+        CONFIG["groq_api_key"] = self.api_key.text().strip()
+        CONFIG["groq_model"] = self.model.text().strip() or "openai/gpt-oss-20b"
+        CONFIG["ai_provider"] = "groq" if self.enabled.isChecked() else "ollama"
+        CONFIG["ollama_enabled"] = self.fallback.isChecked()
+        save_config(CONFIG)
+        try:
+            processor.conversation_ai = ConversationAI(CONFIG, ollama)
+        except Exception:
+            pass
+        self.status.setText("Statut : paramètres enregistrés. Le prochain message utilisera la nouvelle configuration.")
+        signals.log_msg.emit("IA", f"Fournisseur configuré : {CONFIG['ai_provider']} — Groq : {'configuré' if CONFIG['groq_api_key'] else 'non configuré'}")
+
+    def test_groq(self):
+        key = self.api_key.text().strip()
+        if not key:
+            self.status.setText("Statut : clé API Groq manquante.")
+            return
+        try:
+            from core.groq_provider import GroqProvider
+            provider = GroqProvider(api_key=key, model=self.model.text().strip() or "openai/gpt-oss-20b", timeout=15)
+            result = provider.chat([{"role": "user", "content": "Réponds uniquement par OK."}], temperature=0, max_tokens=8)
+            self.status.setText(f"Statut : Groq opérationnel — réponse : {result.strip()}")
+        except Exception as exc:
+            self.status.setText(f"Statut : test Groq échoué. Fallback Ollama disponible si activé.\n{exc}")
+
 class NtfySettingsWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -2687,6 +2746,10 @@ class JarvisWindow(QMainWindow):
         self.chk_ntfy = QCheckBox("Réseau Mobile (NTFY)")
         self.chk_ntfy.stateChanged.connect(lambda state_val: self.toggle_sub_window("Notifications NTFY", NtfySettingsWidget(), state_val))
         self.left_panel.addWidget(self.chk_ntfy)
+
+        self.chk_groq = QCheckBox("🧠 Paramètres IA — Groq / Ollama")
+        self.chk_groq.stateChanged.connect(lambda state_val: self.toggle_sub_window("Paramètres IA", GroqSettingsWidget(), state_val))
+        self.left_panel.addWidget(self.chk_groq)
         
         self.left_panel.addStretch()
         
