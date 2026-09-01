@@ -1,7 +1,8 @@
 name: Apply Groq HUD
 
 on:
-  workflow_dispatch:
+  push:
+    branches: [main]
 
 permissions:
   contents: write
@@ -28,26 +29,21 @@ jobs:
                   super().__init__(parent)
                   layout = QVBoxLayout(self)
                   layout.addWidget(QLabel("🧠 FOURNISSEUR IA — GROQ / OLLAMA"))
-
                   layout.addWidget(QLabel("Clé API Groq"))
                   self.api_key = QLineEdit(CONFIG.get("groq_api_key", ""))
                   self.api_key.setEchoMode(QLineEdit.EchoMode.Password)
                   self.api_key.setPlaceholderText("gsk_...")
                   layout.addWidget(self.api_key)
-
                   layout.addWidget(QLabel("Modèle Groq"))
                   self.model = QLineEdit(CONFIG.get("groq_model", "openai/gpt-oss-20b"))
                   self.model.setPlaceholderText("openai/gpt-oss-20b")
                   layout.addWidget(self.model)
-
                   self.enabled = QCheckBox("Activer Groq pour les conversations")
                   self.enabled.setChecked(CONFIG.get("ai_provider", "groq") == "groq")
                   layout.addWidget(self.enabled)
-
                   self.fallback = QCheckBox("Fallback automatique vers Ollama")
                   self.fallback.setChecked(CONFIG.get("ollama_enabled", True))
                   layout.addWidget(self.fallback)
-
                   buttons = QHBoxLayout()
                   self.btn_save = GlowButton("💾 ENREGISTRER", state.theme_color)
                   self.btn_save.clicked.connect(self.save_settings)
@@ -56,7 +52,6 @@ jobs:
                   self.btn_test.clicked.connect(self.test_groq)
                   buttons.addWidget(self.btn_test)
                   layout.addLayout(buttons)
-
                   self.status = QLabel("Statut : configuration locale")
                   self.status.setWordWrap(True)
                   layout.addWidget(self.status)
