@@ -5,10 +5,13 @@ leaving vision-specific Ollama calls untouched in assistant.py.
 """
 from __future__ import annotations
 
-from typing import Any, Iterable
+from typing import Any
 
 from .ai_provider_router import AIProviderRouter
 from .groq_provider import GroqProvider
+
+
+DEFAULT_GROQ_MODEL = "llama-3.1-8b-instant"
 
 
 class OllamaChatProvider:
@@ -58,12 +61,13 @@ class ConversationAI:
     def __init__(self, config: dict[str, Any], ollama_module: Any):
         self.config = config
         self.ollama_module = ollama_module
+        self.config.setdefault("groq_model", DEFAULT_GROQ_MODEL)
         self.router = self._build_router()
 
     def _build_router(self) -> AIProviderRouter:
         groq = GroqProvider(
             api_key=self.config.get("groq_api_key", ""),
-            model=self.config.get("groq_model", "llama-3.3-70b-versatile"),
+            model=self.config.get("groq_model", DEFAULT_GROQ_MODEL),
             timeout=float(self.config.get("groq_timeout", 60)),
         )
 
