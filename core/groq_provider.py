@@ -2,11 +2,13 @@
 from __future__ import annotations
 import json, os, urllib.error, urllib.request
 
+DEFAULT_MODEL = "llama-3.1-8b-instant"
+
 class GroqProvider:
     endpoint = "https://api.groq.com/openai/v1/chat/completions"
-    def __init__(self, api_key=None, model="llama-3.3-70b-versatile", timeout=60.0):
+    def __init__(self, api_key=None, model=DEFAULT_MODEL, timeout=60.0):
         self.api_key = api_key or os.getenv("GROQ_API_KEY", "")
-        self.model = model
+        self.model = model or DEFAULT_MODEL
         self.timeout = max(1.0, float(timeout))
     @property
     def configured(self): return bool(self.api_key.strip())
