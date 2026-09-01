@@ -1598,7 +1598,7 @@ class CommandProcessor:
         return message
     def ask_ai(self, text: str) -> str:
         if not hasattr(self, "conversation_ai"):
-            self.conversation_ai = ConversationAI(CONFIG)
+            self.conversation_ai = ConversationAI(CONFIG, ollama)
     
         state.is_processing = True
         signals.status_change.emit("RÉFLEXION")
@@ -1677,7 +1677,7 @@ class CommandProcessor:
             state.is_processing = False
             signals.status_change.emit("OPÉRATIONNEL")
     
-            return response["message"]["content"]
+            return response
     
         except Exception as e:
             state.is_processing = False
@@ -2046,11 +2046,6 @@ class CommandProcessor:
             "'décharge le plugin [nom]', 'liste les plugins', "
             "'exécute plugin [nom] [commande]'."
         )
-print("DEBUG web_search :", hasattr(CommandProcessor, "web_search"))
-print("DEBUG open_app   :", hasattr(CommandProcessor, "open_app"))
-print("DEBUG kill_app   :", hasattr(CommandProcessor, "kill_app"))
-print("DEBUG MRO :", CommandProcessor.__mro__)
-print("DEBUG DICT :", [k for k in CommandProcessor.__dict__ if "app" in k.lower() or "web" in k.lower()])
 processor = CommandProcessor()
 
 # --- MODULES ET FENÊTRES SECONDAIRES ---
