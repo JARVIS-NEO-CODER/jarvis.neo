@@ -12,6 +12,8 @@ def format_ai_status(status: Mapping[str, Any] | None) -> str:
         return "GROQ"
     if active == "ollama":
         return "OLLAMA"
+    if active == "simple":
+        return "SIMPLE"
     if status.get("last_error"):
         return "ERROR"
     if status.get("groq_configured"):
