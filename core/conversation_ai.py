@@ -31,6 +31,7 @@ class ConversationAI:
         self.config.setdefault("ai_provider", "groq")
         self.config.setdefault("groq_fallback_to_ollama", True)
         self.router = self._build_router()
+
     def _build_router(self):
         groq = GroqProvider(api_key=self.config.get("groq_api_key", ""),
                             model=self.config.get("groq_model", DEFAULT_GROQ_MODEL),
@@ -42,6 +43,12 @@ class ConversationAI:
         return AIProviderRouter(groq=groq, ollama=ollama,
                                 prefer_groq=self.config.get("ai_provider", "groq") != "ollama",
                                 fallback_to_ollama=bool(self.config.get("groq_fallback_to_ollama", True)))
+
+    def refresh(self) -> dict[str, Any]:
+        """Rebuild the provider router from the current config in-place."""
+        self.router = self._build_router()
+        return self.router.status
+
     def chat(self, messages, *, temperature=0.2, max_tokens=2048):
         return self.router.chat(messages, temperature=temperature, max_tokens=max_tokens)
     @property
