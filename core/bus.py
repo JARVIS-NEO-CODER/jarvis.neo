@@ -59,9 +59,24 @@ class EventBus:
                 self._subscribers.pop(event_name, None)
 
     def publish(self, event: Event) -> None:
+        # Synchronous delivery before the worker starts keeps the bus useful
+        # in simple integrations and unit tests. Once running, publishing is
+        # asynchronous and preserves the priority queue semantics.
         with self._lock:
-            self._sequence += 1
-            sequence = self._sequence
+            running = self._running
+            if not running:
+                handlers = list(self._subscribers.get(event.name, []))
+                handlers += list(self._subscribers.get("*", []))
+            else:
+                self._sequence += 1
+                sequence = self._sequence
+        if not running:
+            for callback in handlers:
+                try:
+                    callback(event)
+                except Exception:
+                    logger.exception("Handler failed for event '%s'", event.name)
+            return
         self._queue.put((event.priority, sequence, event))
 
     def emit(self, name: str, payload: dict[str, Any] | None = None, *, priority: int = 10) -> Event:
