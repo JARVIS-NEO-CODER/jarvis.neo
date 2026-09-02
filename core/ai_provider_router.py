@@ -40,13 +40,26 @@ class AIProviderRouter:
     def is_fallback_error(exc: Exception) -> bool:
         """Return True for quota/rate-limit or temporary provider outages."""
         text = str(exc).lower()
-        if "http 429" in text or "status code: 429" in text:
-            return True
-        if "quota" in text or "rate limit" in text or "too many requests" in text:
-            return True
-        if "http 5" in text or "groq inaccessible" in text:
-            return True
-        return False
+        markers = (
+            "http 429",
+            "status code: 429",
+            "quota",
+            "rate limit",
+            "too many requests",
+            "http 500",
+            "http 502",
+            "http 503",
+            "http 504",
+            "service unavailable",
+            "temporarily unavailable",
+            "timeout",
+            "timed out",
+            "connection reset",
+            "connection refused",
+            "name or service not known",
+            "groq inaccessible",
+        )
+        return any(marker in text for marker in markers)
 
     def _fallback_provider(self):
         if self.quota_fallback_mode == "simple":
@@ -56,12 +69,9 @@ class AIProviderRouter:
         return "ollama", self.ollama
 
     def chat(self, messages, **kwargs):
-        if not self.prefer_groq:
-            providers = [("ollama", self.ollama)]
-        else:
-            providers = [("groq", self.groq)]
-
+        providers = [("groq", self.groq)] if self.prefer_groq else [("ollama", self.ollama)]
         errors = []
+
         for name, provider in providers:
             if provider is None:
                 continue
