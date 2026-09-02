@@ -16,7 +16,7 @@ class SystemPanel(QWidget):
         layout.setHorizontalSpacing(14)
         layout.setVerticalSpacing(8)
 
-        for row, name in enumerate(("CPU", "RAM", "GPU", "TEMP", "NET")):
+        for row, name in enumerate(("CPU", "RAM", "GPU", "TEMP", "NET", "AI")):
             key = QLabel(name)
             key.setStyleSheet("color:#778b7b;font-weight:700;font-size:10px;")
             value = QLabel("--")
