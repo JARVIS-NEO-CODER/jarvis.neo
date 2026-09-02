@@ -54,7 +54,9 @@ class AutomationEngine:
         if self._attached:
             return
         self._bus = event_bus
-        self.actions.attach_to_bus(event_bus)
+        attach = getattr(self.actions, "attach_to_bus", None)
+        if callable(attach):
+            attach(event_bus)
         event_bus.subscribe("context.changed", self._on_context_changed)
         self._attached = True
 
@@ -63,7 +65,9 @@ class AutomationEngine:
         if bus is None or not self._attached:
             return
         bus.unsubscribe("context.changed", self._on_context_changed)
-        self.actions.detach_from_bus()
+        detach = getattr(self.actions, "detach_from_bus", None)
+        if callable(detach):
+            detach()
         self._bus = None
         self._attached = False
 
