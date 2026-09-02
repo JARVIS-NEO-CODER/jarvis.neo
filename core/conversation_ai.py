@@ -58,10 +58,17 @@ class ConversationAI:
     vision requests, which continue using the existing Ollama vision path.
     """
 
-    def __init__(self, config: dict[str, Any], ollama_module: Any):
+    def __init__(self, config: dict[str, Any], ollama_module: Any = None):
         self.config = config
+        if ollama_module is None:
+            try:
+                import ollama as ollama_module
+            except ImportError:
+                ollama_module = None
         self.ollama_module = ollama_module
         self.config.setdefault("groq_model", DEFAULT_GROQ_MODEL)
+        self.config.setdefault("ollama_enabled", True)
+        self.config.setdefault("ai_provider", "groq")
         self.router = self._build_router()
 
     def _build_router(self) -> AIProviderRouter:
