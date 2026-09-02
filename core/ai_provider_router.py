@@ -12,7 +12,7 @@ class SimpleFallbackProvider:
     def chat(self, messages, **kwargs):
         return (
             "Mode Simple actif : le quota Groq est atteint. "
-            "Active le modèle local pour continuer avec une réponse IA complète."
+            "Les fonctions locales restent disponibles, mais cette demande nécessite le modèle IA."
         )
 
 
@@ -49,10 +49,10 @@ class AIProviderRouter:
         return False
 
     def _fallback_provider(self):
-        if not self.fallback_to_ollama:
-            return None, None
         if self.quota_fallback_mode == "simple":
             return "simple", self.simple
+        if not self.fallback_to_ollama:
+            return None, None
         return "ollama", self.ollama
 
     def chat(self, messages, **kwargs):
