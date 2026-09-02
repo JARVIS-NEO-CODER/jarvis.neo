@@ -47,8 +47,9 @@ DEFAULT_CONFIG = {
     "web_port": 8888,
     "ai_provider": "groq",
     "groq_api_key": os.getenv("GROQ_API_KEY", ""),
-    "groq_model": os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+    "groq_model": os.getenv("GROQ_MODEL", "llama-3.1-8b-instant"),
     "groq_fallback_to_ollama": True,
+    "groq_quota_fallback": "ollama",
     "groq_timeout": 60,
     "ollama_enabled": True,
     "ollama_base_url": "http://127.0.0.1:11434",
@@ -147,7 +148,7 @@ def verify_security_pin(candidate: str) -> bool:
 
 
 def get_disk_path() -> str:
-    if sys.platform == "win32": return os.environ.get("SystemDrive", "C:") + "\\"
+    if sys.platform == "win32": return os.environ.get("SystemDrive", "C:\\") + "\\"
     return "/"
 
 
