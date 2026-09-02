@@ -1,8 +1,10 @@
-"""Automatic mode selection from local context and learned habits."""
+"""Automatic mode selection from runtime-configurable context rules."""
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Callable
+
+from .data_registry import get_data
 
 
 @dataclass(frozen=True)
@@ -34,13 +36,14 @@ class AutoModeEngine:
         return {"mode": self.active_mode, "changed": changed}
 
     def configure_defaults(self) -> None:
-        self.register("gaming", {"gaming"})
-        self.register("ets2", {"ets2"})
-        self.register("work", {"work"})
-        self.register("study", {"study"})
-        self.register("creation", {"creation"})
-        self.register("music", {"music"})
-        self.register("evening", {"evening"})
+        """Load mode rules from the runtime data source instead of source-code lists."""
+        for rule in get_data("auto_modes", []):
+            if not isinstance(rule, dict):
+                continue
+            name = str(rule.get("name", "")).strip()
+            events = rule.get("events", [])
+            if name and isinstance(events, list) and events:
+                self.register(name, {str(event) for event in events})
 
 
 __all__ = ["AutoModeEngine", "ModeRule"]
