@@ -26,9 +26,9 @@ class CoreBridgeTests(unittest.TestCase):
     def test_tick_detects_unknown_context_without_ai(self):
         directory, bridge = self.make_bridge()
         try:
-            result = bridge.tick(force=True) if hasattr(bridge, "tick") else None
+            result = bridge.tick(force=True)
             self.assertIsNotNone(result)
-            self.assertEqual(result.name, "unknown")
+            self.assertEqual(result.name, "UNKNOWN")
         finally:
             bridge.shutdown()
             directory.cleanup()
