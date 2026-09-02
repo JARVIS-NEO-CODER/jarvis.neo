@@ -13,7 +13,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -290,6 +290,10 @@ class NeoHud(QWidget):
         self.buttons["SETTINGS"].clicked.connect(self._open_settings)
         root.addLayout(controls)
 
+        self._ai_status_timer = QTimer(self)
+        self._ai_status_timer.setInterval(2000)
+        self._ai_status_timer.timeout.connect(self.refresh_ai_status)
+        self._ai_status_timer.start()
         self.refresh_ai_status()
 
     def _core(self):
