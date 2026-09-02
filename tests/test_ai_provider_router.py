@@ -67,6 +67,14 @@ def test_simple_mode_is_used_after_quota_error():
     assert router.status["quota_fallback_mode"] == "simple"
 
 
+def test_simple_mode_works_without_ollama_fallback_permission():
+    groq = FakeProvider(error="Groq HTTP 429: quota exceeded")
+    router = AIProviderRouter(groq, None, prefer_groq=True, fallback_to_ollama=False, quota_fallback_mode="simple")
+
+    assert router.chat([]).startswith("Mode Simple actif")
+    assert router.status["active_provider"] == "simple"
+
+
 def test_fallback_can_be_disabled():
     groq = FakeProvider(error="quota exceeded")
     ollama = FakeProvider(result="ollama")
