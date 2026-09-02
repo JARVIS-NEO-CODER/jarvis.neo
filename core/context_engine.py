@@ -26,12 +26,27 @@ class ContextResult:
 class ContextEngine:
     """Lightweight observation-based context engine with no app allow-list."""
 
-    def __init__(self, memory: NeoMemory | None = None, event_bus: Any | None = None) -> None:
+    def __init__(
+        self,
+        memory: NeoMemory | Any | None = None,
+        event_bus: Any | None = None,
+        *,
+        bus: Any | None = None,
+    ) -> None:
+        # Backward compatibility: older callers used ContextEngine(bus, memory).
+        if self._looks_like_bus(memory) and not self._looks_like_bus(event_bus):
+            memory, event_bus = event_bus, memory
+        if bus is not None:
+            event_bus = bus
         self.memory = memory or NeoMemory()
         self.bus = event_bus
         self.current_context = "IDLE"
         self._attached = False
         self._last_metric: dict[str, Any] = {}
+
+    @staticmethod
+    def _looks_like_bus(value: Any) -> bool:
+        return value is not None and callable(getattr(value, "subscribe", None)) and callable(getattr(value, "publish", None))
 
     def attach_to_bus(self, event_bus: Any | None = None) -> None:
         if event_bus is not None:
@@ -85,7 +100,6 @@ class ContextEngine:
                         "previous_context": previous,
                         "current_context": context,
                         "trigger": trigger,
-                        "confidence": max(0.0, min(1.0, confidence)),
                     },
                     priority=5,
                 )
