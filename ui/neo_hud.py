@@ -32,6 +32,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from core.ai_status import format_ai_status
 from .arc_reactor import ArcReactor
 from .hud import HudPanel
 from .system_panel import SystemPanel
@@ -289,6 +290,8 @@ class NeoHud(QWidget):
         self.buttons["SETTINGS"].clicked.connect(self._open_settings)
         root.addLayout(controls)
 
+        self.refresh_ai_status()
+
     def _core(self):
         try:
             import assistant as core
@@ -296,9 +299,20 @@ class NeoHud(QWidget):
         except Exception:
             return None
 
+    def refresh_ai_status(self) -> str:
+        """Synchronize the HUD AI indicator with the live ConversationAI router."""
+        core = self._core()
+        processor = getattr(core, "processor", None) if core else None
+        conversation_ai = getattr(processor, "conversation_ai", None) if processor else None
+        status = getattr(conversation_ai, "status", None) if conversation_ai else None
+        label = format_ai_status(status)
+        self.set_system_value("AI", label)
+        return label
+
     def _open_settings(self) -> None:
         dialog = GroqSettingsDialog(self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
+            self.refresh_ai_status()
             self.append_terminal("SYSTEM", "Configuration IA enregistrée.")
 
     def _toggle_microphone(self) -> None:
