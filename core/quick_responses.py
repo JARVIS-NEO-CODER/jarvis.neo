@@ -1,20 +1,21 @@
-"""Fast local responses, checked before invoking the AI model."""
+"""Fast local responses loaded from the runtime data source."""
 from __future__ import annotations
 
 import re
 from typing import Callable
 
+from .data_registry import get_data
+
 
 class QuickResponseEngine:
-    """Matches simple phrases locally so Ollama is only used when needed."""
+    """Matches simple phrases locally so the AI model is only used when needed."""
 
-    def __init__(self) -> None:
+    def __init__(self, responses: dict[str, str | Callable[[], str]] | None = None) -> None:
+        configured = responses if responses is not None else get_data("quick_responses", {})
         self._responses: dict[str, str | Callable[[], str]] = {
-            "jarvis ça va": "Je fonctionne parfaitement. Merci de demander !",
-            "ça va jarvis": "Je fonctionne parfaitement. Merci de demander !",
-            "qui es tu": "Je suis J.A.R.V.I.S. NEO, ton assistant local.",
-            "qui es-tu": "Je suis J.A.R.V.I.S. NEO, ton assistant local.",
-            "quel est ton nom": "Mon nom est J.A.R.V.I.S. NEO.",
+            self._normalize(phrase): response
+            for phrase, response in configured.items()
+            if isinstance(phrase, str) and (isinstance(response, str) or callable(response))
         }
 
     @staticmethod
