@@ -10,6 +10,8 @@ import secrets
 import sys
 from pathlib import Path
 
+from .data_registry import get_data
+
 APP_NAME = "J.A.R.V.I.S. NEO"
 VERSION = "3.6.0"
 BASE_DIR = Path.home() / ".jarvis_neo"
@@ -55,12 +57,9 @@ DEFAULT_CONFIG = {
     "ollama_base_url": "http://127.0.0.1:11434",
 }
 
-MODEL_TIERS = {
-    "grand": {"label": "Grand", "description": "Puissance maximale — précision et raisonnement avancé", "chat": "llama3.1:8b", "vision": "llava:13b"},
-    "moyen": {"label": "Moyen", "description": "Équilibre performance / vitesse (recommandé)", "chat": "llama3.2:3b", "vision": "llava"},
-    "petit": {"label": "Petit", "description": "Rapide et léger — faible consommation RAM", "chat": "phi3:mini", "vision": "llava-phi3"},
-    "mini": {"label": "Mini", "description": "Ultra-léger — réponses quasi instantanées", "chat": "gemma2:2b", "vision": "moondream"},
-}
+MODEL_TIERS = get_data("model_tiers", {})
+if not isinstance(MODEL_TIERS, dict):
+    MODEL_TIERS = {}
 
 
 def load_config() -> dict:
@@ -88,18 +87,21 @@ def save_config(config: dict) -> None:
 
 CONFIG = load_config()
 if "model_tier" not in CONFIG or (CONFIG["model_tier"] not in MODEL_TIERS and CONFIG["model_tier"] != "custom"):
-    CONFIG["model_tier"] = "moyen"
+    CONFIG["model_tier"] = next(iter(MODEL_TIERS), "custom")
 
 
 def get_active_model(vision: bool = False) -> str:
-    tier = CONFIG.get("model_tier", "moyen")
-    if tier in MODEL_TIERS:
+    tier = CONFIG.get("model_tier", "custom")
+    profile = MODEL_TIERS.get(tier)
+    if isinstance(profile, dict):
         key = "vision" if vision else "chat"
         custom = CONFIG.get("model_tiers_custom", {}).get(tier, {})
         if isinstance(custom, dict) and custom.get(key):
             return custom[key]
-        return MODEL_TIERS[tier][key]
-    return CONFIG.get("model", MODEL_TIERS["moyen"]["chat" if not vision else "vision"])
+        selected = profile.get(key)
+        if selected:
+            return str(selected)
+    return str(CONFIG.get("model", ""))
 
 
 MODEL = get_active_model()
