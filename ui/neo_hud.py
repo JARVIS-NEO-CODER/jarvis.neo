@@ -89,7 +89,7 @@ class GroqSettingsDialog(QDialog):
 
         self.model = QLineEdit(str(config.get("groq_model", DEFAULT_GROQ_MODEL)))
         self.provider = QComboBox()
-        self.provider.addItem("Groq prioritaire → Ollama fallback", "groq")
+        self.provider.addItem("Groq prioritaire → fallback configuré", "groq")
         self.provider.addItem("Ollama uniquement", "ollama")
         current_provider = config.get("ai_provider", "groq")
         index = self.provider.findData(current_provider)
@@ -99,10 +99,19 @@ class GroqSettingsDialog(QDialog):
         self.ollama_enabled = QCheckBox("Autoriser Ollama comme fallback")
         self.ollama_enabled.setChecked(bool(config.get("ollama_enabled", True)))
 
+        self.quota_fallback = QComboBox()
+        self.quota_fallback.addItem("Modèle local (Ollama)", "ollama")
+        self.quota_fallback.addItem("Mode Simple", "simple")
+        current_fallback = config.get("groq_quota_fallback", "ollama")
+        fallback_index = self.quota_fallback.findData(current_fallback)
+        if fallback_index >= 0:
+            self.quota_fallback.setCurrentIndex(fallback_index)
+
         form.addRow("Clé API Groq", self.api_key)
         form.addRow("Modèle Groq", self.model)
         form.addRow("Fournisseur", self.provider)
         form.addRow("Fallback", self.ollama_enabled)
+        form.addRow("Quota Groq", self.quota_fallback)
         root.addLayout(form)
 
         actions = QHBoxLayout()
@@ -167,6 +176,7 @@ class GroqSettingsDialog(QDialog):
         config["groq_model"] = self.model.text().strip() or DEFAULT_GROQ_MODEL
         config["ai_provider"] = self.provider.currentData() or "groq"
         config["ollama_enabled"] = self.ollama_enabled.isChecked()
+        config["groq_quota_fallback"] = self.quota_fallback.currentData() or "ollama"
         config.setdefault("groq_timeout", 60)
 
         try:
