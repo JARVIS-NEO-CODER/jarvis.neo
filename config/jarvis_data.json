@@ -1,0 +1,47 @@
+{
+  "model_tiers": {
+    "grand": {"label": "Grand", "description": "Puissance maximale - précision et raisonnement avancé", "chat": "llama3.1:8b", "vision": "llava:13b"},
+    "moyen": {"label": "Moyen", "description": "Équilibre performance / vitesse (recommandé)", "chat": "llama3.2:3b", "vision": "llava"},
+    "petit": {"label": "Petit", "description": "Rapide et léger - faible consommation RAM", "chat": "phi3:mini", "vision": "llava-phi3"},
+    "mini": {"label": "Mini", "description": "Ultra-léger - réponses quasi instantanées", "chat": "gemma2:2b", "vision": "moondream"}
+  },
+  "auto_modes": [
+    {"name": "gaming", "events": ["gaming"]},
+    {"name": "ets2", "events": ["ets2"]},
+    {"name": "work", "events": ["work"]},
+    {"name": "study", "events": ["study"]},
+    {"name": "creation", "events": ["creation"]},
+    {"name": "music", "events": ["music"]},
+    {"name": "evening", "events": ["evening"]}
+  ],
+  "quick_responses": {
+    "jarvis ça va": "Je fonctionne parfaitement. Merci de demander !",
+    "ça va jarvis": "Je fonctionne parfaitement. Merci de demander !",
+    "qui es tu": "Je suis J.A.R.V.I.S. NEO, ton assistant local.",
+    "qui es-tu": "Je suis J.A.R.V.I.S. NEO, ton assistant local.",
+    "quel est ton nom": "Mon nom est J.A.R.V.I.S. NEO."
+  },
+  "folder_aliases": {
+    "documents": "Documents",
+    "téléchargements": "Downloads",
+    "bureau": "Desktop",
+    "images": "Pictures"
+  },
+  "ui_actions": [
+    {"label": "MÉTÉO", "command": "météo"},
+    {"label": "TÂCHES", "command": "mes tâches"},
+    {"label": "MÉMOS", "command": "mes mémos"},
+    {"label": "AGENDA", "command": "mon agenda"},
+    {"label": "VISION", "command": "analyse l'écran"},
+    {"label": "RÉTRO", "command": "mémoire visuelle"},
+    {"label": "BATTERIE", "command": "batterie"},
+    {"label": "UPTIME", "command": "uptime"},
+    {"label": "PROCESSUS", "command": "processus"}
+  ],
+  "window_size_presets": {
+    "compact": [820, 580],
+    "normal": [1150, 750],
+    "large": [1450, 900],
+    "wide": [1600, 720]
+  }
+}
