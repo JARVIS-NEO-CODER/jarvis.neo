@@ -30,6 +30,7 @@ class ConversationAI:
         self.config.setdefault("ollama_enabled", True)
         self.config.setdefault("ai_provider", "groq")
         self.config.setdefault("groq_fallback_to_ollama", True)
+        self.config.setdefault("groq_quota_fallback", "ollama")
         self.router = self._build_router()
 
     def _build_router(self):
@@ -40,9 +41,13 @@ class ConversationAI:
         if self.config.get("ollama_enabled", True):
             ollama = OllamaChatProvider(self.ollama_module, self.config.get("model", "llama3.2:3b"),
                                         self.config.get("ollama_base_url", "http://127.0.0.1:11434"))
-        return AIProviderRouter(groq=groq, ollama=ollama,
-                                prefer_groq=self.config.get("ai_provider", "groq") != "ollama",
-                                fallback_to_ollama=bool(self.config.get("groq_fallback_to_ollama", True)))
+        return AIProviderRouter(
+            groq=groq,
+            ollama=ollama,
+            prefer_groq=self.config.get("ai_provider", "groq") != "ollama",
+            fallback_to_ollama=bool(self.config.get("groq_fallback_to_ollama", True)),
+            quota_fallback_mode=self.config.get("groq_quota_fallback", "ollama"),
+        )
 
     def refresh(self) -> dict[str, Any]:
         """Rebuild the provider router from the current config in-place."""
