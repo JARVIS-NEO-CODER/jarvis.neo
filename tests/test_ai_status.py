@@ -9,6 +9,10 @@ def test_format_ai_status_active_ollama():
     assert format_ai_status({"active_provider": "ollama"}) == "OLLAMA"
 
 
+def test_format_ai_status_active_simple():
+    assert format_ai_status({"active_provider": "simple"}) == "SIMPLE"
+
+
 def test_format_ai_status_ready_without_first_request():
     assert format_ai_status({"groq_configured": True}) == "GROQ READY"
     assert format_ai_status({"ollama_available": True}) == "OLLAMA READY"
