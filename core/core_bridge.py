@@ -37,14 +37,14 @@ class CoreBridge:
         performance = PerformanceManager()
         return cls(memory, context, actions, automation, performance)
 
-    def tick(self) -> ContextResult | None:
-        """Run one lightweight, rate-limited core cycle.
+    def tick(self, *, force: bool = False) -> ContextResult | None:
+        """Run one lightweight core cycle.
 
-        No Ollama request, background thread, or arbitrary system action is
-        started here. The legacy application decides when to call this method.
+        ``force=True`` bypasses the normal polling throttle, which is useful
+        for explicit/manual refreshes and deterministic tests.
         """
         now = monotonic()
-        if self._last_tick and not self.performance.should_poll(now - self._last_tick):
+        if not force and self._last_tick and not self.performance.should_poll(now - self._last_tick):
             return self.last_context
 
         self._last_tick = now
