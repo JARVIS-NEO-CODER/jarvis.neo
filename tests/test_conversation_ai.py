@@ -31,16 +31,20 @@ def test_refresh_applies_provider_and_fallback_changes(monkeypatch):
         "ai_provider": "groq",
         "ollama_enabled": True,
         "groq_fallback_to_ollama": True,
+        "groq_quota_fallback": "simple",
     }
     ai = ConversationAI(config, FakeOllama)
 
     assert ai.status["groq_configured"] is True
     assert ai.status["fallback_to_ollama"] is True
+    assert ai.status["quota_fallback_mode"] == "simple"
 
     config["ai_provider"] = "ollama"
     config["groq_fallback_to_ollama"] = False
+    config["groq_quota_fallback"] = "ollama"
     status = ai.refresh()
 
     assert status["fallback_to_ollama"] is False
+    assert status["quota_fallback_mode"] == "ollama"
     assert ai.router.prefer_groq is False
     assert ai.chat([]) == "ollama"
