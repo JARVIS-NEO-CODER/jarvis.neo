@@ -8,7 +8,7 @@ class DummyMemory:
     pass
 
 
-def test_context_engine_publishes_gaming_context_and_detaches():
+def test_context_engine_publishes_external_gaming_context_and_detaches():
     bus = EventBus()
     context_engine = ContextEngine(bus, DummyMemory())
     received = []
@@ -26,7 +26,7 @@ def test_context_engine_publishes_gaming_context_and_detaches():
         bus.publish(
             Event(
                 name="app.started",
-                payload={"app": "ets2.exe"},
+                payload={"app": "ets2.exe", "activity_type": "gaming"},
             )
         )
 
@@ -45,7 +45,7 @@ def test_context_engine_publishes_gaming_context_and_detaches():
         bus.publish(
             Event(
                 name="app.started",
-                payload={"app": "ets2.exe"},
+                payload={"app": "ets2.exe", "activity_type": "gaming"},
             )
         )
         assert not changed.wait(0.2)
