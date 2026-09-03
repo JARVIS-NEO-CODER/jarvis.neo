@@ -1,23 +1,21 @@
 """Modern visible J.A.R.V.I.S. NEO command center.
 
-This is the primary desktop HUD. It intentionally does not create a floating
-mini HUD, so navigation and other windows are never covered by an overlay.
+This is the primary desktop HUD. It is a single normal QMainWindow, not a
+floating overlay, so it never covers navigation or application controls.
 """
 from __future__ import annotations
 
 import json
-import os
 import time
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QAction, QFont, QKeySequence, QShortcut
+from PyQt6.QtGui import QAction, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
-    QApplication, QCheckBox, QFrame, QGridLayout, QHBoxLayout, QLabel,
-    QMainWindow, QMessageBox, QPushButton, QScrollArea, QSizePolicy,
-    QSystemTrayIcon, QVBoxLayout, QWidget
+    QApplication, QFrame, QGridLayout, QHBoxLayout, QLabel, QMainWindow,
+    QMessageBox, QPushButton, QScrollArea, QSystemTrayIcon, QVBoxLayout, QWidget,
+    QMenu,
 )
-
 
 CONFIG_PATH = Path.home() / ".jarvis_neo" / "jarvis_config.json"
 
@@ -55,7 +53,7 @@ class MetricCard(QFrame):
 
 
 class NeoMainHud(QMainWindow):
-    """The actual primary desktop HUD, replacing the old cockpit layout."""
+    """The actual primary desktop HUD, replacing the legacy cockpit layout."""
 
     closed = pyqtSignal()
 
@@ -100,9 +98,7 @@ class NeoMainHud(QMainWindow):
         #Panel { background:#071019; border:1px solid #153846; border-radius:10px; }
         #PanelTitle { color:#a7dce4; font-size:11px; font-weight:700; letter-spacing:1px; }
         #Activity { background:#04070b; color:#78a6b0; border:1px solid #132e38; border-radius:7px; padding:9px; font-family:'Consolas'; font-size:10px; }
-        #Danger { color:#ff9a9a; }
         QScrollArea { border:0; }
-        QCheckBox { color:#a6c7ce; }
         """
 
     def _build(self) -> None:
@@ -136,11 +132,11 @@ class NeoMainHud(QMainWindow):
             ("sentinel", "⬡  SENTINELLE"),
             ("activity", "≡  ACTIVITÉ"),
         ]:
-            b = QPushButton(label)
-            b.setCheckable(True)
-            b.clicked.connect(lambda checked, k=key: self._navigate(k))
-            self.nav[key] = b
-            side.addWidget(b)
+            button = QPushButton(label)
+            button.setCheckable(True)
+            button.clicked.connect(lambda checked, k=key: self._navigate(k))
+            self.nav[key] = button
+            side.addWidget(button)
         side.addStretch(1)
         hide = QPushButton("◀  MASQUER LE HUD")
         hide.clicked.connect(self.hide_hud)
@@ -210,7 +206,7 @@ class NeoMainHud(QMainWindow):
         av = QVBoxLayout(ai_panel)
         at = QLabel("INTELLIGENCE ACTIVE"); at.setObjectName("PanelTitle")
         self.ai_detail = QLabel("Fournisseur : --\nModèle : --\nFallback : --")
-        self.ai_detail.setStyleSheet("color:#88aeb7;font-size:11px;line-height:1.5;")
+        self.ai_detail.setStyleSheet("color:#88aeb7;font-size:11px;")
         av.addWidget(at); av.addWidget(self.ai_detail); av.addStretch(1)
         panels.addWidget(ai_panel, 1)
 
@@ -218,11 +214,15 @@ class NeoMainHud(QMainWindow):
         ac = QVBoxLayout(action_panel)
         act = QLabel("ACTIONS RAPIDES"); act.setObjectName("PanelTitle")
         ac.addWidget(act)
-        for label, cmd in [("WEB", "ouvre une recherche web"), ("FICHIERS", "ouvre mes fichiers"),
-                           ("AGENT", "active le mode agent"), ("SENTINELLE", "active le mode sentinelle")]:
-            b = QPushButton(label)
-            b.clicked.connect(lambda _, c=cmd: self._command(c))
-            ac.addWidget(b)
+        for label, cmd in [
+            ("WEB", "ouvre une recherche web"),
+            ("FICHIERS", "ouvre mes fichiers"),
+            ("AGENT", "active le mode agent"),
+            ("SENTINELLE", "active le mode sentinelle"),
+        ]:
+            button = QPushButton(label)
+            button.clicked.connect(lambda _, c=cmd: self._command(c))
+            ac.addWidget(button)
         panels.addWidget(action_panel, 1)
         cv.addLayout(panels)
 
@@ -243,20 +243,27 @@ class NeoMainHud(QMainWindow):
         signals = getattr(self.core, "signals", None)
         if not signals:
             return
-        for name, handler in [("status_change", self._on_status), ("listening_change", self._on_listening),
-                              ("speaking_change", self._on_speaking), ("stats_update", self._on_stats),
-                              ("log_msg", self._on_log), ("model_tier_change", self._on_model_tier)]:
+        for name, handler in [
+            ("status_change", self._on_status),
+            ("listening_change", self._on_listening),
+            ("speaking_change", self._on_speaking),
+            ("stats_update", self._on_stats),
+            ("log_msg", self._on_log),
+            ("model_tier_change", self._on_model_tier),
+        ]:
             signal = getattr(signals, name, None)
             if signal:
-                try: signal.connect(handler)
-                except Exception: pass
+                try:
+                    signal.connect(handler)
+                except Exception:
+                    pass
 
     def _setup_tray(self) -> None:
         if not QSystemTrayIcon.isSystemTrayAvailable():
             self.tray = None
             return
         self.tray = QSystemTrayIcon(self)
-        menu = self.tray.contextMenu() or __import__('PyQt6.QtWidgets', fromlist=['QMenu']).QMenu()
+        menu = QMenu(self)
         show = QAction("Afficher / masquer le HUD", self)
         show.triggered.connect(self.toggle_hud)
         menu.addAction(show)
@@ -274,12 +281,17 @@ class NeoMainHud(QMainWindow):
     def _navigate(self, key: str) -> None:
         for k, button in self.nav.items():
             button.setChecked(k == key)
-        titles = {"overview":"COMMAND CENTER", "ai":"INTELLIGENCE", "voice":"VOIX & MICRO",
-                  "system":"SYSTÈME", "agent":"MODE AGENT", "sentinel":"SENTINELLE", "activity":"ACTIVITÉ"}
+        titles = {
+            "overview": "COMMAND CENTER", "ai": "INTELLIGENCE", "voice": "VOIX & MICRO",
+            "system": "SYSTÈME", "agent": "MODE AGENT", "sentinel": "SENTINELLE", "activity": "ACTIVITÉ",
+        }
         self.page_title.setText(titles.get(key, "COMMAND CENTER"))
-        if key == "ai": self._open_settings()
-        elif key == "agent": self._command("active le mode agent")
-        elif key == "sentinel": self._command("active le mode sentinelle")
+        if key == "ai":
+            self._open_settings()
+        elif key == "agent":
+            self._command("active le mode agent")
+        elif key == "sentinel":
+            self._command("active le mode sentinelle")
 
     def _command(self, text: str) -> None:
         try:
@@ -296,18 +308,17 @@ class NeoMainHud(QMainWindow):
             QMessageBox.warning(self, "Paramètres IA", str(exc))
 
     def _on_status(self, status: str) -> None:
-        value = str(status)
-        upper = value.upper()
-        if "ERREUR" in upper:
-            self.status.setText("● ERREUR"); self.status.setStyleSheet("color:#ff7e8b;font-size:11px;font-weight:600;")
-        elif "ÉCOUTE" in upper or "ECOUTE" in upper:
-            self.status.setText("● ÉCOUTE"); self.status.setStyleSheet("color:#7ff6ff;font-size:11px;font-weight:600;")
-        elif "RÉFLEXION" in upper or "REFLEXION" in upper:
-            self.status.setText("● RÉFLEXION"); self.status.setStyleSheet("color:#c59cff;font-size:11px;font-weight:600;")
-        elif "PARLE" in upper:
-            self.status.setText("● PAROLE"); self.status.setStyleSheet("color:#72f5c5;font-size:11px;font-weight:600;")
+        value = str(status).upper()
+        if "ERREUR" in value:
+            self.status.setText("● ERREUR")
+        elif "ÉCOUTE" in value or "ECOUTE" in value:
+            self.status.setText("● ÉCOUTE")
+        elif "RÉFLEXION" in value or "REFLEXION" in value:
+            self.status.setText("● RÉFLEXION")
+        elif "PARLE" in value:
+            self.status.setText("● PAROLE")
         else:
-            self.status.setText("● ONLINE"); self.status.setStyleSheet("color:#5ff5c8;font-size:11px;font-weight:600;")
+            self.status.setText("● ONLINE")
 
     def _on_listening(self, active: bool) -> None:
         self.cards["mic"].set_value("ON" if active else "STANDBY")
@@ -343,22 +354,27 @@ class NeoMainHud(QMainWindow):
         if self.cards["ai"].value.text() == "--":
             self.cards["ai"].set_value(provider)
         state = getattr(getattr(self.core, "state", None), "is_listening", False)
-        if state: self.cards["mic"].set_value("ON")
+        self.cards["mic"].set_value("ON" if state else "STANDBY")
 
     def hide_hud(self) -> None:
         self._hidden = True
-        cfg = getattr(self.core, "CONFIG", _config())
+        cfg = getattr(self.core, "CONFIG", None)
+        if not isinstance(cfg, dict):
+            cfg = _config()
         cfg["main_hud_enabled"] = False
         _save_config(cfg)
         self.hide()
-        if self.tray: self.tray.showMessage("J.A.R.V.I.S. NEO", "HUD principal masqué. Ctrl+Shift+H pour le réafficher.", QSystemTrayIcon.MessageIcon.Information, 2500)
 
     def show_hud(self) -> None:
         self._hidden = False
-        cfg = getattr(self.core, "CONFIG", _config())
+        cfg = getattr(self.core, "CONFIG", None)
+        if not isinstance(cfg, dict):
+            cfg = _config()
         cfg["main_hud_enabled"] = True
         _save_config(cfg)
-        self.show(); self.raise_(); self.activateWindow()
+        self.show()
+        self.raise_()
+        self.activateWindow()
 
     def toggle_hud(self) -> None:
         self.show_hud() if self._hidden or not self.isVisible() else self.hide_hud()
