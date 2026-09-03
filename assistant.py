@@ -301,7 +301,7 @@ from PyQt6.QtGui import (
 )
 from PyQt6.QtWidgets import (
     QApplication, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
-    QMainWindow, QProgressBar, QPushButton, QTextEdit, QVBoxLayout, 
+    QMainWindow, QProgressBar, QPushButton, QTextEdit, QVBoxLayout, QComboBox, 
     QWidget, QSystemTrayIcon, QMenu, QCheckBox, QScrollArea,
     QTableWidget, QTableWidgetItem, QHeaderView
 )
@@ -2192,12 +2192,40 @@ class GroqSettingsWidget(QWidget):
         self.api_key.setEchoMode(QLineEdit.EchoMode.Password)
         self.api_key.setPlaceholderText("gsk_...")
         layout.addWidget(self.api_key)
-        layout.addWidget(QLabel("Modèle Groq"))
-        self.model = QLineEdit(CONFIG.get("groq_model", "openai/gpt-oss-20b"))
-        self.model.setPlaceholderText("openai/gpt-oss-20b")
+        layout.addWidget(QLabel("Fournisseur IA"))
+        self.provider = QComboBox()
+        self.provider.addItem("Groq", "groq")
+        self.provider.addItem("Ollama", "ollama")
+        current_provider = CONFIG.get("ai_provider", "groq")
+        provider_index = self.provider.findData(current_provider)
+        self.provider.setCurrentIndex(provider_index if provider_index >= 0 else 0)
+        layout.addWidget(self.provider)
+
+        layout.addWidget(QLabel("Modèle IA"))
+        self.model = QComboBox()
+        self.model.setMinimumContentsLength(28)
+        self.model.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
+        self._groq_models = [
+            ("Llama 3.1 8B Instant", "llama-3.1-8b-instant"),
+            ("Llama 3.3 70B Versatile", "llama-3.3-70b-versatile"),
+            ("GPT-OSS 20B", "openai/gpt-oss-20b"),
+            ("GPT-OSS 120B", "openai/gpt-oss-120b"),
+            ("Qwen 3.8 27B", "qwen/qwen3.8-27b"),
+            ("Groq Compound", "groq/compound"),
+            ("Groq Compound Mini", "groq/compound-mini"),
+        ]
+        self._ollama_models = [
+            ("Grand • Llama 3.1 8B", "llama3.1:8b"),
+            ("Moyen • Llama 3.2 3B", "llama3.2:3b"),
+            ("Petit • Phi-3 Mini", "phi3:mini"),
+            ("Mini • Gemma 2 2B", "gemma2:2b"),
+        ]
+        self.provider.currentIndexChanged.connect(self._refresh_model_choices)
+        self._refresh_model_choices()
         layout.addWidget(self.model)
         self.enabled = QCheckBox("Activer Groq pour les conversations")
-        self.enabled.setChecked(CONFIG.get("ai_provider", "groq") == "groq")
+        self.enabled.setChecked(current_provider == "groq")
+        self.enabled.toggled.connect(lambda checked: self.provider.setCurrentIndex(0 if checked else 1))
         layout.addWidget(self.enabled)
         self.fallback = QCheckBox("Fallback automatique vers Ollama")
         self.fallback.setChecked(CONFIG.get("ollama_enabled", True))
@@ -2214,10 +2242,36 @@ class GroqSettingsWidget(QWidget):
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
 
+
+    def _refresh_model_choices(self):
+        provider = self.provider.currentData() or "groq"
+        current = (
+            CONFIG.get("groq_model", "openai/gpt-oss-20b")
+            if provider == "groq"
+            else CONFIG.get("model", "llama3.2:3b")
+        )
+        models = self._groq_models if provider == "groq" else self._ollama_models
+        self.model.blockSignals(True)
+        self.model.clear()
+        for label, model_id in models:
+            self.model.addItem(label, model_id)
+        index = self.model.findData(current)
+        if index < 0 and current:
+            self.model.addItem(f"Personnalisé • {current}", current)
+            index = self.model.count() - 1
+        if index >= 0:
+            self.model.setCurrentIndex(index)
+        self.model.blockSignals(False)
+
     def save_settings(self):
         CONFIG["groq_api_key"] = self.api_key.text().strip()
-        CONFIG["groq_model"] = self.model.text().strip() or "openai/gpt-oss-20b"
-        CONFIG["ai_provider"] = "groq" if self.enabled.isChecked() else "ollama"
+        selected_model = self.model.currentData() or self.model.currentText().strip()
+        provider = self.provider.currentData() or "groq"
+        if provider == "groq":
+            CONFIG["groq_model"] = str(selected_model) or "openai/gpt-oss-20b"
+        else:
+            CONFIG["model"] = str(selected_model) or "llama3.2:3b"
+        CONFIG["ai_provider"] = provider
         CONFIG["ollama_enabled"] = self.fallback.isChecked()
         save_config(CONFIG)
         try:
@@ -2234,7 +2288,7 @@ class GroqSettingsWidget(QWidget):
             return
         try:
             from core.groq_provider import GroqProvider
-            provider = GroqProvider(api_key=key, model=self.model.text().strip() or "openai/gpt-oss-20b", timeout=15)
+            provider = GroqProvider(api_key=key, model=str(self.model.currentData() or self.model.currentText().strip() or "openai/gpt-oss-20b"), timeout=15)
             result = provider.chat([{"role": "user", "content": "Réponds uniquement par OK."}], temperature=0, max_tokens=8)
             self.status.setText(f"Statut : Groq opérationnel — réponse : {result.strip()}")
         except Exception as exc:
