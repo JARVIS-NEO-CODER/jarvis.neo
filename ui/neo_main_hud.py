@@ -1,11 +1,8 @@
-"""Modern visible J.A.R.V.I.S. NEO command center.
-
-This is the primary desktop HUD. It is a single normal QMainWindow, not a
-floating overlay, so it never covers navigation or application controls.
-"""
 from __future__ import annotations
 
 import json
+import os
+import platform
 import time
 from pathlib import Path
 
@@ -13,93 +10,40 @@ from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QAction, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QApplication, QFrame, QGridLayout, QHBoxLayout, QLabel, QMainWindow,
-    QMessageBox, QPushButton, QScrollArea, QSystemTrayIcon, QVBoxLayout, QWidget,
-    QMenu,
+    QMessageBox, QPushButton, QScrollArea, QSystemTrayIcon, QVBoxLayout,
+    QWidget, QMenu,
 )
 
-CONFIG_PATH = Path.home() / ".jarvis_neo" / "jarvis_config.json"
 
-
-def _config() -> dict:
-    try:
-        return json.loads(CONFIG_PATH.read_text(encoding="utf-8")) if CONFIG_PATH.exists() else {}
-    except Exception:
-        return {}
-
-
-def _save_config(data: dict) -> None:
-    try:
-        CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        CONFIG_PATH.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
-    except Exception:
-        pass
-
-
-class MetricCard(QFrame):
-    def __init__(self, title: str, value: str = "--", parent=None):
-        super().__init__(parent)
-        self.setObjectName("MetricCard")
-        box = QVBoxLayout(self)
-        box.setContentsMargins(16, 13, 16, 13)
-        self.title = QLabel(title.upper())
-        self.title.setObjectName("CardTitle")
-        self.value = QLabel(value)
-        self.value.setObjectName("MetricValue")
-        box.addWidget(self.title)
-        box.addWidget(self.value)
-
-    def set_value(self, value: str) -> None:
-        self.value.setText(str(value))
+CONFIG_DIR = Path.home() / ".jarvis_neo"
+CONFIG_FILE = CONFIG_DIR / "jarvis_config.json"
 
 
 class NeoMainHud(QMainWindow):
-    """The actual primary desktop HUD, replacing the legacy cockpit layout."""
+    """Primary JARVIS NEO desktop HUD.
 
-    closed = pyqtSignal()
+    This is deliberately a normal main window rather than a floating overlay,
+    so it cannot cover the application's own navigation controls.
+    """
 
-    def __init__(self, core, parent=None):
-        super().__init__(parent)
-        self.core = core
+    command_requested = pyqtSignal(str)
+
+    def __init__(self, assistant):
+        super().__init__()
+        self.assistant = assistant
         self._hidden = False
-        self.setWindowTitle("J.A.R.V.I.S. NEO | Command Center")
-        self.setMinimumSize(1080, 680)
-        self.resize(1320, 820)
-        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
-        self.setStyleSheet(self._style())
+        self._last_activity = "Initialisation du centre de commande"
+        self.setWindowTitle("J.A.R.V.I.S. NEO - Command Center")
+        self.setMinimumSize(1080, 700)
+        self.resize(1280, 820)
+        self.setObjectName("NeoMainHud")
         self._build()
-        self._connect_signals()
         self._setup_tray()
         self._setup_shortcut()
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._refresh)
         self._timer.start(1000)
         self._refresh()
-
-    def _style(self) -> str:
-        return """
-        QMainWindow, QWidget { background:#05080d; color:#d9f7ff; font-family:'Segoe UI'; }
-        #Root { background:#05080d; }
-        #Sidebar { background:#080d14; border-right:1px solid #173746; }
-        #Brand { color:#70f4ff; font-size:21px; font-weight:700; letter-spacing:2px; }
-        #SubBrand { color:#62808b; font-size:10px; letter-spacing:1px; }
-        QPushButton { background:#09131b; color:#9bc7d0; border:1px solid #183846; border-radius:7px; padding:10px 12px; text-align:left; }
-        QPushButton:hover { background:#0d202b; border-color:#2e91a8; color:#e8fdff; }
-        QPushButton:checked { background:#0c2a35; border-color:#55e6f4; color:#75f4ff; }
-        #TopBar { background:#070d13; border-bottom:1px solid #173746; }
-        #Title { color:#e8fbff; font-size:17px; font-weight:600; }
-        #Status { color:#5ff5c8; font-size:11px; font-weight:600; }
-        #Section { color:#78eaf5; font-size:12px; font-weight:700; letter-spacing:1px; }
-        #Hero { background:#071018; border:1px solid #164151; border-radius:12px; }
-        #HeroTitle { color:#7ff6ff; font-size:27px; font-weight:600; }
-        #HeroText { color:#7898a3; font-size:11px; }
-        #MetricCard { background:#071019; border:1px solid #153846; border-radius:9px; }
-        #CardTitle { color:#66818a; font-size:9px; font-weight:700; letter-spacing:1px; }
-        #MetricValue { color:#dffcff; font-size:22px; font-weight:600; }
-        #Panel { background:#071019; border:1px solid #153846; border-radius:10px; }
-        #PanelTitle { color:#a7dce4; font-size:11px; font-weight:700; letter-spacing:1px; }
-        #Activity { background:#04070b; color:#78a6b0; border:1px solid #132e38; border-radius:7px; padding:9px; font-family:'Consolas'; font-size:10px; }
-        QScrollArea { border:0; }
-        """
 
     def _build(self) -> None:
         root = QWidget()
@@ -115,6 +59,7 @@ class NeoMainHud(QMainWindow):
         side = QVBoxLayout(sidebar)
         side.setContentsMargins(16, 20, 16, 16)
         side.setSpacing(8)
+
         brand = QLabel("J.A.R.V.I.S.")
         brand.setObjectName("Brand")
         sub = QLabel("NEO COMMAND CENTER")
@@ -122,6 +67,7 @@ class NeoMainHud(QMainWindow):
         side.addWidget(brand)
         side.addWidget(sub)
         side.addSpacing(20)
+
         self.nav = {}
         for key, label in [
             ("overview", "◈  VUE GÉNÉRALE"),
@@ -138,248 +84,271 @@ class NeoMainHud(QMainWindow):
             self.nav[key] = button
             side.addWidget(button)
         side.addStretch(1)
+
         hide = QPushButton("◀  MASQUER LE HUD")
         hide.clicked.connect(self.hide_hud)
         side.addWidget(hide)
         settings = QPushButton("⚙  PARAMÈTRES")
         settings.clicked.connect(self._open_settings)
         side.addWidget(settings)
-        outer.addWidget(side)
+
+        # IMPORTANT: add the QWidget, not its QVBoxLayout.
+        outer.addWidget(sidebar)
 
         main = QWidget()
         mv = QVBoxLayout(main)
         mv.setContentsMargins(20, 15, 20, 15)
         mv.setSpacing(12)
+
         top = QFrame()
         top.setObjectName("TopBar")
         top.setFixedHeight(46)
-        th = QHBoxLayout(top)
-        th.setContentsMargins(12, 0, 12, 0)
-        self.page_title = QLabel("COMMAND CENTER")
-        self.page_title.setObjectName("Title")
-        self.status = QLabel("● ONLINE")
+        tv = QHBoxLayout(top)
+        self.status = QLabel("●  NEO ONLINE")
         self.status.setObjectName("Status")
         self.clock = QLabel("--:--:--")
-        self.clock.setStyleSheet("color:#67818a;font-size:11px;")
-        th.addWidget(self.page_title)
-        th.addStretch(1)
-        th.addWidget(self.status)
-        th.addSpacing(20)
-        th.addWidget(self.clock)
+        self.clock.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        tv.addWidget(self.status)
+        tv.addStretch(1)
+        tv.addWidget(self.clock)
         mv.addWidget(top)
-
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        content = QWidget()
-        cv = QVBoxLayout(content)
-        cv.setContentsMargins(0, 4, 4, 8)
-        cv.setSpacing(12)
 
         hero = QFrame()
         hero.setObjectName("Hero")
         hv = QVBoxLayout(hero)
         hv.setContentsMargins(20, 18, 20, 18)
-        self.hero_title = QLabel("SYSTÈMES EN LIGNE")
-        self.hero_title.setObjectName("HeroTitle")
-        self.hero_text = QLabel("Le centre de commande NEO est actif. Tous les états sont surveillés en temps réel.")
-        self.hero_text.setObjectName("HeroText")
-        hv.addWidget(self.hero_title)
-        hv.addWidget(self.hero_text)
-        cv.addWidget(hero)
+        title = QLabel("NEO COMMAND CENTER")
+        title.setObjectName("HeroTitle")
+        self.hero_state = QLabel("SYSTÈME OPÉRATIONNEL")
+        self.hero_state.setObjectName("HeroState")
+        hv.addWidget(title)
+        hv.addWidget(self.hero_state)
+        mv.addWidget(hero)
 
-        sec = QLabel("TÉLÉMÉTRIE")
-        sec.setObjectName("Section")
-        cv.addWidget(sec)
         grid = QGridLayout()
         grid.setSpacing(10)
-        self.cards = {k: MetricCard(t) for k, t in [
+        self.cards = {}
+        for idx, (key, label) in enumerate([
             ("cpu", "CPU"), ("ram", "RAM"), ("temp", "TEMPÉRATURE"),
             ("ai", "IA"), ("mic", "MICRO"), ("voice", "VOIX"),
-        ]}
-        for i, card in enumerate(self.cards.values()):
-            grid.addWidget(card, i // 3, i % 3)
-        cv.addLayout(grid)
+        ]):
+            card = QFrame()
+            card.setObjectName("Card")
+            cv = QVBoxLayout(card)
+            cv.setContentsMargins(14, 12, 14, 12)
+            l = QLabel(label)
+            l.setObjectName("CardLabel")
+            value = QLabel("--")
+            value.setObjectName("CardValue")
+            cv.addWidget(l)
+            cv.addWidget(value)
+            self.cards[key] = value
+            grid.addWidget(card, idx // 3, idx % 3)
+        mv.addLayout(grid)
 
-        panels = QHBoxLayout()
-        panels.setSpacing(10)
-        ai_panel = QFrame(); ai_panel.setObjectName("Panel")
+        lower = QHBoxLayout()
+        lower.setSpacing(10)
+
+        ai_panel = QFrame()
+        ai_panel.setObjectName("Panel")
         av = QVBoxLayout(ai_panel)
-        at = QLabel("INTELLIGENCE ACTIVE"); at.setObjectName("PanelTitle")
-        self.ai_detail = QLabel("Fournisseur : --\nModèle : --\nFallback : --")
-        self.ai_detail.setStyleSheet("color:#88aeb7;font-size:11px;")
-        av.addWidget(at); av.addWidget(self.ai_detail); av.addStretch(1)
-        panels.addWidget(ai_panel, 1)
+        av.addWidget(QLabel("INTELLIGENCE ACTIVE"))
+        self.ai_detail = QLabel("Provider: --\nModèle: --")
+        self.ai_detail.setObjectName("Detail")
+        av.addWidget(self.ai_detail)
+        ai_btn = QPushButton("⚙  CONFIGURER L'IA")
+        ai_btn.clicked.connect(self._open_settings)
+        av.addWidget(ai_btn)
+        lower.addWidget(ai_panel, 1)
 
-        action_panel = QFrame(); action_panel.setObjectName("Panel")
-        ac = QVBoxLayout(action_panel)
-        act = QLabel("ACTIONS RAPIDES"); act.setObjectName("PanelTitle")
-        ac.addWidget(act)
-        for label, cmd in [
-            ("WEB", "ouvre une recherche web"),
-            ("FICHIERS", "ouvre mes fichiers"),
-            ("AGENT", "active le mode agent"),
-            ("SENTINELLE", "active le mode sentinelle"),
+        quick = QFrame()
+        quick.setObjectName("Panel")
+        qv = QVBoxLayout(quick)
+        qv.addWidget(QLabel("ACTIONS RAPIDES"))
+        for text, command in [
+            ("▸  TESTER JARVIS", "bonjour"),
+            ("◌  ACTIVER MICRO", "écoute"),
+            ("◇  MODE AGENT", "mode agent"),
         ]:
-            button = QPushButton(label)
-            button.clicked.connect(lambda _, c=cmd: self._command(c))
-            ac.addWidget(button)
-        panels.addWidget(action_panel, 1)
-        cv.addLayout(panels)
+            b = QPushButton(text)
+            b.clicked.connect(lambda checked, c=command: self._send_command(c))
+            qv.addWidget(b)
+        lower.addWidget(quick, 1)
 
-        sec2 = QLabel("FLUX SYSTÈME")
-        sec2.setObjectName("Section")
-        cv.addWidget(sec2)
-        self.activity = QLabel("Initialisation du flux…")
-        self.activity.setObjectName("Activity")
-        self.activity.setMinimumHeight(130)
-        self.activity.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
-        cv.addWidget(self.activity)
+        activity = QFrame()
+        activity.setObjectName("Panel")
+        acv = QVBoxLayout(activity)
+        acv.addWidget(QLabel("ACTIVITÉ SYSTÈME"))
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        content = QWidget()
+        content.setObjectName("Activity")
+        content_layout = QVBoxLayout(content)
+        self.activity_label = QLabel(self._last_activity)
+        self.activity_label.setWordWrap(True)
+        content_layout.addWidget(self.activity_label)
+        content_layout.addStretch(1)
         scroll.setWidget(content)
-        mv.addWidget(scroll, 1)
-        outer.addWidget(main, 1)
-        self._navigate("overview")
+        acv.addWidget(scroll)
+        lower.addWidget(activity, 1)
+        mv.addLayout(lower, 1)
 
-    def _connect_signals(self) -> None:
-        signals = getattr(self.core, "signals", None)
-        if not signals:
-            return
-        for name, handler in [
-            ("status_change", self._on_status),
-            ("listening_change", self._on_listening),
-            ("speaking_change", self._on_speaking),
-            ("stats_update", self._on_stats),
-            ("log_msg", self._on_log),
-            ("model_tier_change", self._on_model_tier),
-        ]:
-            signal = getattr(signals, name, None)
-            if signal:
-                try:
-                    signal.connect(handler)
-                except Exception:
-                    pass
+        outer.addWidget(main, 1)
+        self._apply_style()
+        self.nav["overview"].setChecked(True)
+
+    def _apply_style(self) -> None:
+        self.setStyleSheet("""
+        #NeoMainHud, #Root { background:#070b10; color:#d9f7ff; }
+        #Sidebar { background:#0a1118; border-right:1px solid #16313b; }
+        #Brand { color:#d9f7ff; font-size:24px; font-weight:700; }
+        #SubBrand, #CardLabel { color:#5f8c98; font-size:10px; font-weight:700; letter-spacing:1px; }
+        QPushButton { background:#0c1820; color:#b8dbe2; border:1px solid #183843; border-radius:6px; padding:10px; text-align:left; }
+        QPushButton:hover { background:#10232c; border-color:#2b6877; }
+        QPushButton:checked { background:#12313a; border-color:#4aa8bb; color:#e8fcff; }
+        #TopBar, #Card, #Panel, #Hero { background:#0b141b; border:1px solid #16343f; border-radius:8px; }
+        #Status { color:#66d9b4; font-weight:700; }
+        #HeroTitle { color:#86d9e8; font-size:26px; font-weight:700; }
+        #HeroState { color:#70aab5; font-size:12px; }
+        #CardValue { color:#e3fbff; font-size:20px; font-weight:700; }
+        #Detail { color:#9bc6cf; padding:6px; }
+        #Activity { background:#05090d; color:#83aeb8; border:1px solid #132e38; border-radius:7px; padding:9px; font-family:'Consolas'; font-size:10px; }
+        QScrollArea { border:0; }
+        """)
+
+    def _setup_shortcut(self) -> None:
+        self._shortcut = QShortcut(QKeySequence("Ctrl+Shift+H"), self)
+        self._shortcut.activated.connect(self.toggle_hud)
 
     def _setup_tray(self) -> None:
+        self.tray = None
         if not QSystemTrayIcon.isSystemTrayAvailable():
-            self.tray = None
             return
         self.tray = QSystemTrayIcon(self)
-        menu = QMenu(self)
-        show = QAction("Afficher / masquer le HUD", self)
-        show.triggered.connect(self.toggle_hud)
-        menu.addAction(show)
-        quit_action = QAction("Quitter J.A.R.V.I.S. NEO", self)
+        menu = QMenu()
+        show_action = QAction("Afficher le HUD", self)
+        show_action.triggered.connect(self.show_hud)
+        hide_action = QAction("Masquer le HUD", self)
+        hide_action.triggered.connect(self.hide_hud)
+        quit_action = QAction("Quitter JARVIS NEO", self)
         quit_action.triggered.connect(QApplication.instance().quit)
+        menu.addAction(show_action)
+        menu.addAction(hide_action)
+        menu.addSeparator()
         menu.addAction(quit_action)
         self.tray.setContextMenu(menu)
         self.tray.setToolTip("J.A.R.V.I.S. NEO")
         self.tray.show()
 
-    def _setup_shortcut(self) -> None:
-        self.shortcut = QShortcut(QKeySequence("Ctrl+Shift+H"), self)
-        self.shortcut.activated.connect(self.toggle_hud)
-
-    def _navigate(self, key: str) -> None:
-        for k, button in self.nav.items():
-            button.setChecked(k == key)
-        titles = {
-            "overview": "COMMAND CENTER", "ai": "INTELLIGENCE", "voice": "VOIX & MICRO",
-            "system": "SYSTÈME", "agent": "MODE AGENT", "sentinel": "SENTINELLE", "activity": "ACTIVITÉ",
-        }
-        self.page_title.setText(titles.get(key, "COMMAND CENTER"))
-        if key == "ai":
-            self._open_settings()
-        elif key == "agent":
-            self._command("active le mode agent")
-        elif key == "sentinel":
-            self._command("active le mode sentinelle")
-
-    def _command(self, text: str) -> None:
+    def _config(self) -> dict:
         try:
-            self.core.command_queue.put(text)
-            self._on_log("USER", f"> {text}")
-        except Exception as exc:
-            self._on_log("ERROR", str(exc))
+            return json.loads(CONFIG_FILE.read_text(encoding="utf-8")) if CONFIG_FILE.exists() else {}
+        except Exception:
+            return {}
 
-    def _open_settings(self) -> None:
-        try:
-            from ui.provider_settings import ProviderSettingsDialog
-            ProviderSettingsDialog(self).exec()
-        except Exception as exc:
-            QMessageBox.warning(self, "Paramètres IA", str(exc))
-
-    def _on_status(self, status: str) -> None:
-        value = str(status).upper()
-        if "ERREUR" in value:
-            self.status.setText("● ERREUR")
-        elif "ÉCOUTE" in value or "ECOUTE" in value:
-            self.status.setText("● ÉCOUTE")
-        elif "RÉFLEXION" in value or "REFLEXION" in value:
-            self.status.setText("● RÉFLEXION")
-        elif "PARLE" in value:
-            self.status.setText("● PAROLE")
-        else:
-            self.status.setText("● ONLINE")
-
-    def _on_listening(self, active: bool) -> None:
-        self.cards["mic"].set_value("ON" if active else "STANDBY")
-
-    def _on_speaking(self, active: bool) -> None:
-        self.cards["voice"].set_value("PARLE" if active else "PRÊT")
-
-    def _on_stats(self, data: dict) -> None:
-        self.cards["cpu"].set_value(f"{int(data.get('cpu', 0))}%")
-        self.cards["ram"].set_value(f"{int(data.get('ram', 0))}%")
-        temp = data.get("temp")
-        self.cards["temp"].set_value(f"{int(temp)}°C" if isinstance(temp, (int, float)) else "--")
-
-    def _on_model_tier(self, tier: str) -> None:
-        self.cards["ai"].set_value(str(tier).upper())
-
-    def _on_log(self, sender: str, message: str) -> None:
-        if message == "__CLEAR_CHAT__":
-            self.activity.setText("")
-            return
-        stamp = time.strftime("%H:%M:%S")
-        old = self.activity.text().split("\n") if self.activity.text() else []
-        lines = (old + [f"[{stamp}] {sender}: {str(message)}"])[-12:]
-        self.activity.setText("\n".join(lines))
-
-    def _refresh(self) -> None:
-        self.clock.setText(time.strftime("%H:%M:%S"))
-        cfg = getattr(self.core, "CONFIG", {})
-        provider = str(cfg.get("ai_provider", "groq")).upper()
-        model = str(cfg.get("groq_model" if provider == "GROQ" else "model", "--"))
-        fallback = str(cfg.get("groq_quota_fallback", "ollama")).upper()
-        self.ai_detail.setText(f"Fournisseur : {provider}\nModèle : {model}\nFallback : {fallback}")
-        if self.cards["ai"].value.text() == "--":
-            self.cards["ai"].set_value(provider)
-        state = getattr(getattr(self.core, "state", None), "is_listening", False)
-        self.cards["mic"].set_value("ON" if state else "STANDBY")
+    def _save_config(self, data: dict) -> None:
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        CONFIG_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
     def hide_hud(self) -> None:
-        self._hidden = True
-        cfg = getattr(self.core, "CONFIG", None)
-        if not isinstance(cfg, dict):
-            cfg = _config()
+        cfg = self._config()
         cfg["main_hud_enabled"] = False
-        _save_config(cfg)
+        self._save_config(cfg)
+        self._hidden = True
         self.hide()
 
     def show_hud(self) -> None:
-        self._hidden = False
-        cfg = getattr(self.core, "CONFIG", None)
-        if not isinstance(cfg, dict):
-            cfg = _config()
+        cfg = self._config()
         cfg["main_hud_enabled"] = True
-        _save_config(cfg)
+        self._save_config(cfg)
+        self._hidden = False
         self.show()
         self.raise_()
         self.activateWindow()
 
     def toggle_hud(self) -> None:
-        self.show_hud() if self._hidden or not self.isVisible() else self.hide_hud()
+        if self.isVisible():
+            self.hide_hud()
+        else:
+            self.show_hud()
+
+    def _navigate(self, key: str) -> None:
+        for k, button in self.nav.items():
+            button.setChecked(k == key)
+        if key == "ai":
+            self._open_settings()
+        elif key == "voice":
+            self._send_command("écoute")
+        elif key == "agent":
+            self._send_command("mode agent")
+        elif key == "sentinel":
+            self._send_command("mode sentinelle")
+        self._last_activity = f"Navigation: {key}"
+        self.activity_label.setText(self._last_activity)
+
+    def _send_command(self, command: str) -> None:
+        self._last_activity = f"> {command}"
+        self.activity_label.setText(self._last_activity)
+        try:
+            self.command_requested.emit(command)
+            if hasattr(self.assistant, "handle_command"):
+                self.assistant.handle_command(command)
+            elif hasattr(self.assistant, "process_command"):
+                self.assistant.process_command(command)
+        except Exception as exc:
+            self.activity_label.setText(f"Erreur commande: {exc}")
+
+    def _open_settings(self) -> None:
+        for name in ("open_settings", "show_settings", "_open_settings"):
+            fn = getattr(self.assistant, name, None)
+            if callable(fn):
+                try:
+                    fn()
+                    return
+                except TypeError:
+                    pass
+        QMessageBox.information(self, "JARVIS NEO", "Les paramètres sont gérés par le moteur JARVIS.")
+
+    def _get_attr(self, *names, default="--"):
+        for name in names:
+            obj = self.assistant
+            try:
+                for part in name.split("."):
+                    obj = getattr(obj, part)
+                if obj is not None:
+                    return obj
+            except Exception:
+                continue
+        return default
+
+    def _refresh(self) -> None:
+        self.clock.setText(time.strftime("%H:%M:%S"))
+        cpu = self._get_attr("cpu_percent", "cpu_usage", default="--")
+        ram = self._get_attr("ram_percent", "memory_percent", default="--")
+        temp = self._get_attr("cpu_temp", "temperature", default="--")
+        provider = self._get_attr("ai_provider", "provider", "ai.provider", default="--")
+        model = self._get_attr("ai_model", "model", "ai.model", default="--")
+        mic = self._get_attr("microphone_status", "mic_status", default="PRÊT")
+        voice = self._get_attr("voice_status", "tts_status", default="PRÊT")
+        self.cards["cpu"].setText(self._fmt(cpu, "%"))
+        self.cards["ram"].setText(self._fmt(ram, "%"))
+        self.cards["temp"].setText(self._fmt(temp, "°C"))
+        self.cards["ai"].setText(str(provider))
+        self.cards["mic"].setText(str(mic))
+        self.cards["voice"].setText(str(voice))
+        self.ai_detail.setText(f"Provider: {provider}\nModèle: {model}")
+        self.hero_state.setText(f"SYSTÈME OPÉRATIONNEL  •  {platform.system()}  •  IA: {provider}")
+
+    @staticmethod
+    def _fmt(value, suffix: str) -> str:
+        if value in (None, "", "--"):
+            return "--"
+        try:
+            return f"{float(value):.0f}{suffix}"
+        except Exception:
+            return str(value)
 
     def closeEvent(self, event) -> None:
+        # Closing the window hides the HUD instead of killing the assistant.
         event.ignore()
         self.hide_hud()
-        self.closed.emit()
