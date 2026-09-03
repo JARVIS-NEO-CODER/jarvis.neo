@@ -2205,15 +2205,9 @@ class GroqSettingsWidget(QWidget):
         self.model = QComboBox()
         self.model.setMinimumContentsLength(28)
         self.model.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
-        self._groq_models = [
-            ("Llama 3.1 8B Instant", "llama-3.1-8b-instant"),
-            ("Llama 3.3 70B Versatile", "llama-3.3-70b-versatile"),
-            ("GPT-OSS 20B", "openai/gpt-oss-20b"),
-            ("GPT-OSS 120B", "openai/gpt-oss-120b"),
-            ("Qwen 3.8 27B", "qwen/qwen3.8-27b"),
-            ("Groq Compound", "groq/compound"),
-            ("Groq Compound Mini", "groq/compound-mini"),
-        ]
+        # Single source of truth: this is the model list used by the visible UI.
+        from core.ai_model_catalog import GROQ_MODELS
+        self._groq_models = list(GROQ_MODELS)
         self._ollama_models = [
             ("Grand • Llama 3.1 8B", "llama3.1:8b"),
             ("Moyen • Llama 3.2 3B", "llama3.2:3b"),
