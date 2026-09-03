@@ -3,10 +3,10 @@
 
 a = Analysis(
     ['assistant.py'],
-    pathex=[],
+    pathex=['.'],
     binaries=[],
     datas=[],
-    hiddenimports=[],
+    hiddenimports=['sitecustomize', 'core.voice_session_bridge'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=['sitecustomize.py'],
@@ -15,14 +15,13 @@ a = Analysis(
     optimize=0,
 )
 pyz = PYZ(a.pure)
-
 exe = EXE(
     pyz,
     a.scripts,
     a.binaries,
     a.datas,
     [],
-    name='assistant',
+    name='JARVIS_NEO',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
