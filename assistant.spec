@@ -22,7 +22,6 @@ a = Analysis(
         'core.runtime_ui_bridge',
         'core.discrete_hud',
         'ui.arc_reactor',
-        'ui.ai_status',
         'ui.neo_hud',
     ],
     hookspath=[],
