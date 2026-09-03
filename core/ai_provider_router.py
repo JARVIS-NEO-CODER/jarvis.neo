@@ -1,5 +1,6 @@
 """Route conversation requests across Groq and explicit local/simple fallbacks."""
 from __future__ import annotations
+import time
 from typing import Any
 
 
@@ -21,6 +22,7 @@ class AIProviderRouter:
         self.last_provider = None
         self.last_error = None
         self.last_fallback_reason = None
+        self.last_latency_ms = None
 
     @staticmethod
     def is_fallback_error(exc: Exception) -> bool:
@@ -49,9 +51,11 @@ class AIProviderRouter:
                 continue
             if name == "groq" and hasattr(provider, "configured") and not provider.configured:
                 continue
+            started = time.perf_counter()
             try:
                 result = provider.chat(messages, **kwargs)
                 self.last_provider = name
+                self.last_latency_ms = round((time.perf_counter() - started) * 1000, 1)
                 self.last_error = None
                 self.last_fallback_reason = None
                 return result
@@ -63,9 +67,11 @@ class AIProviderRouter:
                 fallback_name, fallback = self._fallback_provider()
                 if fallback is None:
                     break
+                fallback_started = time.perf_counter()
                 try:
                     result = fallback.chat(messages, **kwargs)
                     self.last_provider = fallback_name
+                    self.last_latency_ms = round((time.perf_counter() - fallback_started) * 1000, 1)
                     self.last_error = None
                     self.last_fallback_reason = "groq_unavailable"
                     return result
@@ -85,6 +91,7 @@ class AIProviderRouter:
             "quota_fallback_mode": self.quota_fallback_mode,
             "last_fallback_reason": self.last_fallback_reason,
             "last_error": self.last_error,
+            "latency_ms": self.last_latency_ms,
         }
 
 
