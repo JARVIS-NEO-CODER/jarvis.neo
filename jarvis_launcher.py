@@ -1,4 +1,4 @@
-"""Stable entry point for the redesigned J.A.R.V.I.S. NEO desktop HUD."""
+"""Stable entry point for the focused J.A.R.V.I.S. NEO command center."""
 from __future__ import annotations
 
 import sys
@@ -8,39 +8,23 @@ from PyQt6.QtWidgets import QApplication
 
 import assistant
 import sitecustomize
-
-
-def _wire_visible_ai_settings() -> None:
-    """Keep the legacy AI settings button compatible with the canonical dialog."""
-    window_cls = getattr(assistant, "JarvisWindow", None)
-    if window_cls is None or getattr(window_cls, "_canonical_ai_settings_wired", False):
-        return
-    original_toggle = window_cls.toggle_sub_window
-
-    def toggle_sub_window(self, title, widget, state_val):
-        if title == "Paramètres IA" and state_val == 2:
-            from ui.provider_settings import ProviderSettingsDialog
-            ProviderSettingsDialog(self).exec()
-            return
-        return original_toggle(self, title, widget, state_val)
-
-    window_cls.toggle_sub_window = toggle_sub_window
-    window_cls._canonical_ai_settings_wired = True
+import voice_runtime
 
 
 def _start_core_workers() -> None:
-    """Start the same background services used by the assistant without opening the old HUD."""
-    for worker in (
+    workers = (
         assistant.command_worker,
-        assistant.voice_worker,
+        voice_runtime.run,
         assistant.reminder_worker,
         assistant.run_web_server,
         assistant.security_worker,
         assistant.system_monitor_worker,
         assistant.retro_vision_worker,
-    ):
+    )
+    for worker in workers:
         try:
-            threading.Thread(target=worker, daemon=True).start()
+            target = (lambda w=worker: w(assistant)) if worker is voice_runtime.run else worker
+            threading.Thread(target=target, daemon=True, name=f"NEO-{worker.__name__}").start()
         except Exception as exc:
             try:
                 assistant.log.warning(f"Service NEO non lancé : {exc}")
@@ -51,12 +35,10 @@ def _start_core_workers() -> None:
 def main() -> None:
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
-
     sitecustomize.install_runtime_fixes(assistant)
-    _wire_visible_ai_settings()
     _start_core_workers()
 
-    from ui.neo_main_hud import NeoMainHud
+    from ui.neo_main_hud_v2 import NeoMainHud
     hud = NeoMainHud(assistant)
     hud.show()
     hud.raise_()
@@ -69,7 +51,6 @@ def main() -> None:
             assistant.speech.say("Centre de commande NEO en ligne.")
         except Exception:
             pass
-
     sys.exit(app.exec())
 
 
