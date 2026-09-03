@@ -8,17 +8,19 @@ import time
 
 def _attach_discrete_hud() -> None:
     for _ in range(240):
-        assistant = sys.modules.get("assistant")
-        window = getattr(assistant, "_jarvis_window_instance", None) if assistant else None
-        if window is not None:
-            try:
-                from ui.discrete_hud import DiscreteHud
-                hud = DiscreteHud(window)
-                window._jarvis_discrete_hud = hud
-                hud.show_discrete()
-                return
-            except Exception:
-                return
+        try:
+            from PyQt6.QtWidgets import QApplication
+            app = QApplication.instance()
+            if app is not None:
+                for window in app.topLevelWidgets():
+                    if window.__class__.__name__ == "JarvisWindow":
+                        from ui.discrete_hud import DiscreteHud
+                        hud = DiscreteHud(window)
+                        window._jarvis_discrete_hud = hud
+                        hud.show_discrete()
+                        return
+        except Exception:
+            pass
         time.sleep(0.05)
 
 
