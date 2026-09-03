@@ -5,17 +5,10 @@ HUD. It is intentionally self-contained so the legacy assistant remains safe.
 """
 from __future__ import annotations
 
-import os
 import socket
-import time
-from pathlib import Path
 
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QFont
-from PyQt6.QtWidgets import (
-    QDialog, QGridLayout, QHBoxLayout, QLabel, QProgressBar, QPushButton,
-    QScrollArea, QSizePolicy, QVBoxLayout, QWidget,
-)
+from PyQt6.QtWidgets import QDialog, QGridLayout, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 try:
     import psutil
@@ -23,8 +16,8 @@ except Exception:
     psutil = None
 
 
-class _Card(QFrame if False else QWidget):
-    """Small styled dashboard card without another custom dependency."""
+class _Card(QWidget):
+    """Small styled dashboard card."""
 
     def __init__(self, title: str, parent=None):
         super().__init__(parent)
@@ -67,12 +60,15 @@ class CockpitHud(QDialog):
             "QPushButton { background:#07151f;color:#bdefff;border:1px solid #16465a;"
             "border-radius:7px;padding:8px 12px;font-weight:700;font-size:10px; }"
             "QPushButton:hover { background:#0b2532;border-color:#00f3ff; }"
-            "QProgressBar { background:#071018;border:1px solid #173747;border-radius:4px;height:7px;text-align:center;color:transparent; }"
-            "QProgressBar::chunk { background:#00f3ff;border-radius:3px; }"
-            "QScrollArea { border:none;background:transparent; }"
         )
         self._drag_pos = None
         self._build()
+        signals = getattr(assistant, "signals", None)
+        if signals is not None:
+            try:
+                signals.log_msg.connect(self._on_log)
+            except Exception:
+                pass
         self._timer = QTimer(self)
         self._timer.setInterval(1000)
         self._timer.timeout.connect(self.refresh)
@@ -162,6 +158,9 @@ class CockpitHud(QDialog):
         except Exception as exc:
             self.activity_label.setText(f"> ERREUR\n{exc}")
 
+    def _on_log(self, category, message):
+        self.activity_label.setText(f"[{str(category).upper()}] {message}")
+
     def _toggle_pin(self):
         flags = self.windowFlags()
         if self.pin.isChecked():
@@ -196,7 +195,7 @@ class CockpitHud(QDialog):
         self.cards["ram"].value.setText(f"{ram:.0f}%")
         self.cards["ram"].detail.setText("Mémoire vive")
         self.cards["temp"].value.setText(f"{temp:.0f} °C" if temp is not None else "N/A")
-        self.cards["temp"].detail.setText("Température disponible selon le matériel")
+        self.cards["temp"].detail.setText("Selon les capteurs disponibles")
         try:
             socket.create_connection(("1.1.1.1", 53), timeout=0.15).close()
             net = "ONLINE"
@@ -207,10 +206,13 @@ class CockpitHud(QDialog):
 
         processor = getattr(self.assistant, "processor", None)
         conversation = getattr(processor, "conversation_ai", None) if processor else None
-        provider = str(config.get("ai_provider", "ollama")).upper()
-        model = str(config.get("groq_model" if provider == "GROQ" else "model", "--"))
-        self.cards["ai"].value.setText(provider)
-        self.cards["ai"].detail.setText(model)
+        status = getattr(conversation, "status", {}) if conversation else {}
+        active_provider = str(status.get("active_provider") or config.get("ai_provider", "ollama")).upper()
+        model_key = "groq_model" if active_provider == "GROQ" else "model"
+        model = str(config.get(model_key, "--"))
+        fallback = str(config.get("groq_quota_fallback", "ollama")).upper()
+        self.cards["ai"].value.setText(active_provider)
+        self.cards["ai"].detail.setText(f"{model} · FALLBACK {fallback}")
 
         listening = bool(getattr(state, "is_listening", False)) if state else False
         speaking = bool(getattr(state, "is_speaking", False)) if state else False
@@ -221,8 +223,7 @@ class CockpitHud(QDialog):
             f"VOICE {'ON' if bool(getattr(state, 'voice_enabled', True)) else 'OFF'}"
         )
 
-        mode = str(getattr(processor, "_neo_agent_mode", False))
-        self.mode.setText("MODE: AGENT" if mode.lower() == "true" else "MODE: NORMAL")
+        self.mode.setText("MODE: AGENT" if bool(getattr(processor, "_neo_agent_mode", False)) else "MODE: NORMAL")
         if state:
             if listening:
                 self.status.setText("● LISTENING")
@@ -232,20 +233,6 @@ class CockpitHud(QDialog):
                 self.status.setText("● THINKING")
             else:
                 self.status.setText("● SYSTEM ONLINE")
-
-        activity = getattr(state, "activity", None) if state else None
-        if activity is not None:
-            try:
-                latest = None
-                while not activity.empty():
-                    latest = activity.get_nowait()
-                if latest:
-                    self.activity_label.setText(
-                        f"[{str(latest.get('category', 'SYSTEM')).upper()}] "
-                        f"{latest.get('message', '')}"
-                    )
-            except Exception:
-                pass
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
