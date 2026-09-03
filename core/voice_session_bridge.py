@@ -25,6 +25,10 @@ def install(assistant, session) -> bool:
     except Exception:
         return False
 
+    def enqueue_command(text: str) -> None:
+        session.begin_response()
+        queue.put(text)
+
     def voice_worker():
         recognizer = sr.Recognizer()
         recognizer.energy_threshold = 300
@@ -70,17 +74,20 @@ def install(assistant, session) -> bool:
                             clean_cmd = re.sub(rf"\b{re.escape(hotword)}\b", "", normalized, flags=re.I).strip(" ,.!?")
                             signals.log_msg.emit("Vous (Voix)", normalized)
                             if clean_cmd:
-                                queue.put(clean_cmd)
+                                enqueue_command(clean_cmd)
                             else:
-                                speech.say("Oui ?")
+                                session.begin_response()
+                                try:
+                                    speech.say("Oui ?")
+                                finally:
+                                    session.touch()
                         elif session.accepts_followup():
-                            session.touch()
                             signals.log_msg.emit("Vous (Voix)", normalized)
-                            queue.put(normalized)
+                            enqueue_command(normalized)
                     else:
                         session.start()
                         signals.log_msg.emit("Vous (Voix)", normalized)
-                        queue.put(normalized)
+                        enqueue_command(normalized)
             except sr.WaitTimeoutError:
                 state.is_listening = False
                 signals.listening_change.emit(False)
