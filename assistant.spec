@@ -28,6 +28,8 @@ a = Analysis(
         'ui.arc_reactor',
         'ui.neo_hud',
         'ui.mini_hud',
+        'ui.cockpit_hud',
+        'ui.cockpit_bridge',
     ],
     hookspath=[],
     hooksconfig={},
