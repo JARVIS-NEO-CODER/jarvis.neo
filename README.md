@@ -2,6 +2,11 @@
 
 > **Un assistant personnel local-first qui comprend son contexte, agit sur le PC et évolue avec son utilisateur.**
 
+> [!WARNING]
+> 🔴 **OLLAMA DOIT ÊTRE INSTALLÉ SÉPARÉMENT SUR LE PC.**
+> 
+> J.A.R.V.I.S. NEO n'embarque pas le moteur Ollama ni les modèles dans son `.exe`. Installez **Ollama** et téléchargez au minimum le modèle local utilisé par votre configuration avant de lancer NEO. Consultez [`OLLAMA_INSTALLATION.md`](OLLAMA_INSTALLATION.md) pour la procédure.
+
 J.A.R.V.I.S. NEO est un projet expérimental qui cherche à aller plus loin qu'un assistant qui attend simplement une commande.
 
 L'idée est de construire un véritable **cockpit personnel** : NEO observe son environnement informatique, comprend ce qui est en train de se passer, adapte son comportement, peut effectuer des actions et présente son état dans une interface HUD futuriste.
@@ -201,7 +206,11 @@ Le projet est en développement actif. Le nouveau cœur modulaire est déjà en 
 - ⚡ gestionnaire de performances ;
 - 🔌 pont d'intégration du Core ;
 - 🧪 premiers tests du nouveau cœur ;
-- 📖 documentation de l'architecture.
+- 📖 documentation de l'architecture ;
+- 🤖 pont Groq ↔ Ollama avec fallback ;
+- 🧩 Agent avec vérification des actions ;
+- 🎨 HUD discret en arrière-plan ;
+- 🪟 démarrage automatique Windows configurable.
 
 ### En développement / prévu
 
