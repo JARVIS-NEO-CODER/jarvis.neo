@@ -30,6 +30,14 @@ def main() -> None:
     # Apply fixes before the real application window is created.
     sitecustomize.install_runtime_fixes(assistant)
     _wire_visible_ai_settings()
+    try:
+        from ui.cockpit_bridge import install as install_cockpit
+        install_cockpit(assistant)
+    except Exception as exc:
+        try:
+            assistant.log.warning(f"Cockpit HUD non chargé : {exc}")
+        except Exception:
+            pass
     assistant.main()
 
 
