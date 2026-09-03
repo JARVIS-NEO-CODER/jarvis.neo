@@ -2778,6 +2778,11 @@ class JarvisWindow(QMainWindow):
         
         self.left_panel.addSpacing(8)
         pages_label = QLabel("PROTOCOLES & MODULES")
+        # Point d'accès explicite aux paramètres IA partagés par tout NEO.
+        self.btn_ai_settings = GlowButton("⚙ PARAMÈTRES IA", state.theme_color)
+        self.btn_ai_settings.setToolTip("Choisir le fournisseur, le modèle, la clé Groq et le fallback")
+        self.btn_ai_settings.clicked.connect(self._open_ai_settings)
+        self.left_panel.addWidget(self.btn_ai_settings)
         pages_label.setStyleSheet("font-size: 10px; color: #00f3ff; font-weight: bold; letter-spacing: 1.5px;")
         self.left_panel.addWidget(pages_label)
         
@@ -2810,6 +2815,15 @@ class JarvisWindow(QMainWindow):
         btn_exit = GlowButton("DÉCONNECTER LE SYSTÈME", QColor(255, 50, 50))
         btn_exit.clicked.connect(QCoreApplication.quit)
         self.left_panel.addWidget(btn_exit)
+
+    def _open_ai_settings(self):
+        try:
+            from ui.provider_settings import ProviderSettingsDialog
+            dialog = ProviderSettingsDialog(self)
+            dialog.exec()
+            self._update_model_tier_ui(CONFIG.get("model_tier", "moyen"))
+        except Exception as exc:
+            signals.log_msg.emit("IA", f"Impossible d'ouvrir les paramètres IA : {exc}")
 
     def _set_model_tier(self, tier):
         msg = apply_model_tier(tier)
@@ -3403,6 +3417,16 @@ def main():
     
     window = JarvisWindow()
     window.show()
+
+    # HUD discret réellement attaché à la fenêtre principale.
+    # Il est créé sur le thread Qt principal, donc aucun monkey-patch asynchrone
+    # n'est nécessaire et le bouton de paramètres reste toujours accessible.
+    try:
+        from ui.discrete_hud import DiscreteHud
+        window._jarvis_discrete_hud = DiscreteHud(window)
+        window._jarvis_discrete_hud.show_discrete()
+    except Exception as exc:
+        logging.exception("Impossible d'initialiser le HUD discret : %s", exc)
     
     speech.say("Systèmes quantiques en ligne. Prêt à exécuter vos ordres.")
     sys.exit(app.exec())
