@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from typing import Any
 
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -34,6 +35,39 @@ OLLAMA_MODELS = [
     ("Petit • Phi-3 Mini", "phi3:mini"),
     ("Mini • Gemma 2 2B", "gemma2:2b"),
 ]
+
+
+def model_catalog(provider: str) -> list[tuple[str, str]]:
+    """Return the selectable models for a provider."""
+    return list(GROQ_MODELS if str(provider).lower() == "groq" else OLLAMA_MODELS)
+
+
+def apply_provider_settings(
+    config: dict[str, Any],
+    *,
+    provider: str,
+    api_key: str,
+    model: str,
+    fallback: str,
+    autostart: bool,
+) -> dict[str, Any]:
+    """Apply and normalize provider settings without depending on Qt."""
+    provider = "groq" if str(provider).lower() == "groq" else "ollama"
+    selected_model = str(model).strip()
+    if provider == "groq":
+        selected_model = selected_model or GROQ_MODELS[0][1]
+    else:
+        selected_model = selected_model or OLLAMA_MODELS[1][1]
+    config["ai_provider"] = provider
+    config["groq_api_key"] = str(api_key).strip()
+    if provider == "groq":
+        config["groq_model"] = selected_model
+    else:
+        config["model"] = selected_model
+    config["groq_quota_fallback"] = "simple" if str(fallback).lower() in {"simple", "mode simple"} else "ollama"
+    config["groq_fallback_to_ollama"] = config["groq_quota_fallback"] == "ollama"
+    config["autostart"] = bool(autostart)
+    return config
 
 
 class ProviderSettingsDialog(QDialog):
@@ -102,8 +136,9 @@ class ProviderSettingsDialog(QDialog):
             return {}
 
     def _refresh_models(self, provider: str):
-        current = str(self.config.get("groq_model", "llama-3.1-8b-instant")) if provider == "Groq" else str(self.config.get("model", "llama3.2:3b"))
-        models = GROQ_MODELS if provider == "Groq" else OLLAMA_MODELS
+        provider_key = str(provider).lower()
+        current = str(self.config.get("groq_model", GROQ_MODELS[0][1])) if provider_key == "groq" else str(self.config.get("model", OLLAMA_MODELS[1][1]))
+        models = model_catalog(provider_key)
         self.model.blockSignals(True)
         self.model.clear()
         for label, model_id in models:
@@ -115,23 +150,21 @@ class ProviderSettingsDialog(QDialog):
             self.model.addItem(f"Personnalisé • {current}", current)
             self.model.setCurrentIndex(self.model.count() - 1)
         self.model.blockSignals(False)
-        if provider == "Groq":
+        if provider_key == "groq":
             self.model_hint.setText("Groq : sélectionnez directement un modèle compatible.")
         else:
             self.model_hint.setText("Ollama : sélectionnez le modèle local installé. Un modèle personnalisé déjà configuré reste disponible.")
 
     def _save(self):
         selected_model = self.model.currentData() or self.model.currentText().strip()
-        provider = self.provider.currentText().lower()
-        self.config["ai_provider"] = provider
-        self.config["groq_api_key"] = self.key.text().strip()
-        if provider == "groq":
-            self.config["groq_model"] = str(selected_model) or "llama-3.1-8b-instant"
-        else:
-            self.config["model"] = str(selected_model) or "llama3.2:3b"
-        self.config["groq_quota_fallback"] = "simple" if self.fallback.currentText() == "Mode Simple" else "ollama"
-        self.config["groq_fallback_to_ollama"] = self.config["groq_quota_fallback"] == "ollama"
-        self.config["autostart"] = self.autostart.isChecked()
+        self.config = apply_provider_settings(
+            self.config,
+            provider=self.provider.currentText(),
+            api_key=self.key.text(),
+            model=selected_model,
+            fallback=self.fallback.currentText(),
+            autostart=self.autostart.isChecked(),
+        )
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.path.write_text(json.dumps(self.config, indent=2, ensure_ascii=False), encoding="utf-8")
         try:
@@ -146,4 +179,4 @@ class ProviderSettingsDialog(QDialog):
         self.accept()
 
 
-__all__ = ["ProviderSettingsDialog", "GROQ_MODELS", "OLLAMA_MODELS"]
+__all__ = ["ProviderSettingsDialog", "GROQ_MODELS", "OLLAMA_MODELS", "model_catalog", "apply_provider_settings"]
