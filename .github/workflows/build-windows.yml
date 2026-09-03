@@ -7,6 +7,7 @@ on:
       - 'assistant.py'
       - 'assistant.spec'
       - 'sitecustomize.py'
+      - 'jarvis_hud_runtime_hook.py'
       - 'core/**'
       - 'ui/**'
       - 'requirements.txt'
