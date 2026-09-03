@@ -122,10 +122,35 @@ class ProviderSettingsDialog(QDialog):
             set_enabled(self.config["autostart"])
         except Exception:
             pass
+
+        # The running app uses the modular engine installed by
+        # runtime_conversation_bridge. Refresh that engine in place so the
+        # next message really uses the newly selected provider/model.
+        runtime_ok = False
         try:
             import assistant
-            from core.conversation_ai import ConversationAI
-            assistant.processor.conversation_ai = ConversationAI(self.config, getattr(assistant, "ollama", None))
+            engine = getattr(getattr(assistant, "processor", None), "_neo_conversation_ai", None)
+            if engine is not None:
+                engine.config.clear()
+                engine.config.update(self.config)
+                engine.refresh()
+                runtime_ok = True
+            else:
+                from core.conversation_ai import ConversationAI
+                processor = getattr(assistant, "processor", None)
+                if processor is not None:
+                    processor.conversation_ai = ConversationAI(self.config, getattr(assistant, "ollama", None))
+                    runtime_ok = True
+        except Exception:
+            pass
+
+        try:
+            import assistant
+            signals = getattr(assistant, "signals", None)
+            if signals is not None and hasattr(signals, "log_msg"):
+                selected = self.config.get("groq_model") if provider == "groq" else self.config.get("model")
+                status = "appliqués immédiatement" if runtime_ok else "enregistrés pour le prochain démarrage"
+                signals.log_msg.emit("IA", f"Paramètres IA {status} : {provider} / {selected}")
         except Exception:
             pass
         self.accept()
