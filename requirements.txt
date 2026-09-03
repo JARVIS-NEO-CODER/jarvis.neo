@@ -1,5 +1,6 @@
 # J.A.R.V.I.S. NEO runtime dependencies
 # Python 3.11 recommended
+# Whisper is intentionally optional: see requirements-voice.txt
 
 PyQt6>=6.7,<7
 psutil>=6.0,<7
@@ -16,4 +17,3 @@ sounddevice>=0.5,<1
 soundfile>=0.12,<1
 fastapi>=0.115,<1
 uvicorn>=0.30,<1
-openai-whisper>=20240930
