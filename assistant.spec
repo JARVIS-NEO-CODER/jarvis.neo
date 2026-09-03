@@ -32,6 +32,7 @@ a = Analysis(
         'ui.cockpit_bridge',
         'ui.neo_command_deck',
         'ui.command_deck_bridge',
+        'ui.neo_main_hud',
     ],
     hookspath=[],
     hooksconfig={},
