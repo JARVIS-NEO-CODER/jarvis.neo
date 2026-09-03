@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Any
 
 # Current Groq text/chat-capable models documented by GroqCloud.
+# This is the single source of truth for every visible Groq model selector.
 # Keep this list independent from Ollama so changing provider immediately
 # repopulates the visible selector with the correct models.
 GROQ_MODELS = [
