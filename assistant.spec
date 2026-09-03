@@ -27,6 +27,7 @@ a = Analysis(
         'ui.provider_settings',
         'ui.arc_reactor',
         'ui.neo_hud',
+        'ui.mini_hud',
     ],
     hookspath=[],
     hooksconfig={},
