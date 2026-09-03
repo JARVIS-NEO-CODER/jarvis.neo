@@ -2,22 +2,28 @@
 from __future__ import annotations
 
 
+async def _wrap_speech_end(speech, session):
+    original = getattr(speech, "_neo_original_say_async", None)
+    if original is None:
+        return
+
+
 def install(assistant, session) -> bool:
-    """Patch the legacy window without creating Qt widgets off the GUI thread."""
+    """Patch the legacy runtime without creating Qt widgets off the GUI thread."""
     if getattr(assistant, "_neo_runtime_ui_bridge", False):
         return True
 
     speech = getattr(assistant, "speech", None)
-    original_say = getattr(speech, "say", None) if speech else None
-    if original_say is not None and not getattr(original_say, "_neo_session_wrapped", False):
-        def say_and_finish(*args, **kwargs):
+    original_async = getattr(speech, "_say", None) if speech else None
+    if original_async is not None and not getattr(original_async, "_neo_session_wrapped", False):
+        async def say_and_finish(text, *args, **kwargs):
             try:
-                return original_say(*args, **kwargs)
+                return await original_async(text, *args, **kwargs)
             finally:
-                # The 12s follow-up window starts after speech has finished.
+                # _say completes only after TTS playback has finished.
                 session.touch()
         say_and_finish._neo_session_wrapped = True
-        speech.say = say_and_finish
+        speech._say = say_and_finish
 
     try:
         from ui.discrete_hud import DiscreteHud
@@ -35,7 +41,6 @@ def install(assistant, session) -> bool:
     original_close = window_cls.close
 
     def show_with_discrete(self):
-        # A click on the reactor explicitly requests the full cockpit.
         if getattr(self, "_neo_reveal", False):
             original_show(self)
             return
