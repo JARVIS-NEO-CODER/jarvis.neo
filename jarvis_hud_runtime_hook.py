@@ -6,23 +6,32 @@ import threading
 import time
 
 
-def _attach_discrete_hud() -> None:
+def _install_show_hook() -> None:
     for _ in range(240):
-        try:
-            from PyQt6.QtWidgets import QApplication
-            app = QApplication.instance()
-            if app is not None:
-                for window in app.topLevelWidgets():
-                    if window.__class__.__name__ == "JarvisWindow":
+        assistant = sys.modules.get("assistant")
+        window_cls = getattr(assistant, "JarvisWindow", None) if assistant else None
+        if window_cls is not None:
+            if getattr(window_cls, "_jarvis_discrete_hud_hooked", False):
+                return
+            original_show = window_cls.show
+
+            def show_with_hud(self, *args, **kwargs):
+                result = original_show(self, *args, **kwargs)
+                if getattr(self, "_jarvis_discrete_hud", None) is None:
+                    try:
                         from ui.discrete_hud import DiscreteHud
-                        hud = DiscreteHud(window)
-                        window._jarvis_discrete_hud = hud
+                        hud = DiscreteHud(self)
+                        self._jarvis_discrete_hud = hud
                         hud.show_discrete()
-                        return
-        except Exception:
-            pass
+                    except Exception:
+                        pass
+                return result
+
+            window_cls.show = show_with_hud
+            window_cls._jarvis_discrete_hud_hooked = True
+            return
         time.sleep(0.05)
 
 
 if not any("pytest" in str(arg).lower() for arg in sys.argv):
-    threading.Thread(target=_attach_discrete_hud, name="jarvis-discrete-hud", daemon=True).start()
+    threading.Thread(target=_install_show_hook, name="jarvis-discrete-hud-hook", daemon=True).start()
