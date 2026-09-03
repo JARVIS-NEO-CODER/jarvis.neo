@@ -3,12 +3,18 @@ from __future__ import annotations
 
 from typing import Any
 
+# Current Groq text/chat-capable models documented by GroqCloud.
+# Keep this list independent from Ollama so changing provider immediately
+# repopulates the visible selector with the correct models.
 GROQ_MODELS = [
     ("Llama 3.1 8B Instant", "llama-3.1-8b-instant"),
     ("Llama 3.3 70B Versatile", "llama-3.3-70b-versatile"),
     ("GPT-OSS 20B", "openai/gpt-oss-20b"),
     ("GPT-OSS 120B", "openai/gpt-oss-120b"),
+    ("GPT-OSS Safeguard 20B", "openai/gpt-oss-safeguard-20b"),
+    ("Qwen 3.6 27B", "qwen/qwen3.6-27b"),
     ("Qwen 3.8 27B", "qwen/qwen3.8-27b"),
+    ("MiniMax M2.7", "minimaxai/minimax-m2.7"),
     ("Groq Compound", "groq/compound"),
     ("Groq Compound Mini", "groq/compound-mini"),
 ]
