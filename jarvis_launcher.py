@@ -1,12 +1,8 @@
-"""Stable packaged entry point for J.A.R.V.I.S. NEO.
-
-The real application lives in assistant.py.  Keeping a tiny launcher as the
-PyInstaller entry point lets us apply UI wiring on the Qt main thread before
-assistant.main() creates the QApplication/window.
-"""
+"""Stable packaged entry point for J.A.R.V.I.S. NEO."""
 from __future__ import annotations
 
 import assistant
+import sitecustomize
 
 
 def _wire_visible_ai_settings() -> None:
@@ -31,6 +27,8 @@ def _wire_visible_ai_settings() -> None:
 
 
 def main() -> None:
+    # Apply fixes before the real application window is created.
+    sitecustomize.install_runtime_fixes(assistant)
     _wire_visible_ai_settings()
     assistant.main()
 
