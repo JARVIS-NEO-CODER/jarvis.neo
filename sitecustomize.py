@@ -1,8 +1,4 @@
-"""J.A.R.V.I.S. NEO runtime compatibility and agent bridge.
-
-This hook keeps the legacy desktop runtime connected to the modular AI stack
-without requiring a second launcher. Vision remains local to Ollama.
-"""
+"""J.A.R.V.I.S. NEO runtime compatibility and agent bridge."""
 from __future__ import annotations
 
 import json
@@ -67,8 +63,8 @@ def _install_agent_bridge() -> bool:
         if assistant is None:
             return False
         processor = getattr(assistant, "processor", None)
-        if processor is None or getattr(processor, "_neo_agent_bridge", False):
-            return processor is not None
+        if processor is None:
+            return False
         from core.action_engine import ActionEngine, ControlMode
         from core.agent_engine import AgentEngine
         from core.conversation_session import ConversationSession
@@ -78,6 +74,9 @@ def _install_agent_bridge() -> bool:
         from core.voice_session_bridge import install as install_voice_session_bridge
     except Exception:
         return False
+
+    if getattr(processor, "_neo_agent_bridge", False):
+        return True
 
     config = getattr(assistant, "CONFIG", {})
     api_key = str(config.get("groq_api_key", "") or os.getenv("GROQ_API_KEY", "")).strip()
@@ -141,7 +140,7 @@ def _install_agent_bridge() -> bool:
             from core.web_search import WebSearchProvider
             results = WebSearchProvider().search(query, limit=5)
             _log("Web", f"Recherche réelle : {query} ({len(results)} résultats)")
-            if hasattr(assistant, "signals"):
+            if results and hasattr(assistant, "signals"):
                 assistant.signals.open_url.emit(results[0].url)
             return "Résultats web : " + " | ".join(
                 f"{r.title} — {r.snippet or r.url}" for r in results
@@ -186,8 +185,6 @@ def _install_agent_bridge() -> bool:
         if getattr(processor, "_neo_agent_mode", False):
             session.touch()
             return run_agent(normalized)
-        if session.accepts_followup():
-            session.touch()
         return original_process(text)
 
     processor._neo_agent_mode = False
@@ -207,10 +204,26 @@ def _install_agent_bridge() -> bool:
     return True
 
 
+def _install_runtime_ui_bridge() -> bool:
+    try:
+        assistant = sys.modules.get("assistant")
+        if assistant is None or getattr(assistant, "JarvisWindow", None) is None:
+            return False
+        processor = getattr(assistant, "processor", None)
+        session = getattr(processor, "_neo_agent_session", None) if processor else None
+        if session is None:
+            return False
+        from core.runtime_ui_bridge import install
+        return install(assistant, session)
+    except Exception:
+        return False
+
+
 def _bootstrap_runtime() -> None:
     _install_ollama_groq_bridge()
-    for _ in range(120):
-        if _install_agent_bridge():
+    for _ in range(240):
+        _install_agent_bridge()
+        if _install_runtime_ui_bridge():
             return
         time.sleep(0.05)
 
