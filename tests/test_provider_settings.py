@@ -1,39 +1,49 @@
 import json
 
-
-def test_provider_settings_model_selector_saves_choice(tmp_path, monkeypatch):
-    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
-    from PyQt6.QtWidgets import QApplication
-    from ui import provider_settings
-
-    app = QApplication.instance() or QApplication([])
-    monkeypatch.setattr(provider_settings.Path, "home", staticmethod(lambda: tmp_path))
-
-    dialog = provider_settings.ProviderSettingsDialog()
-    assert dialog.provider.currentText() == "Groq"
-    assert dialog.model.count() == len(provider_settings.GROQ_MODELS)
-    assert dialog.model.itemData(0) == provider_settings.GROQ_MODELS[0][1]
-
-    target_index = dialog.model.findData("openai/gpt-oss-120b")
-    assert target_index >= 0
-    dialog.model.setCurrentIndex(target_index)
-    dialog._save()
-
-    saved = json.loads((tmp_path / ".jarvis_neo" / "jarvis_config.json").read_text(encoding="utf-8"))
-    assert saved["ai_provider"] == "groq"
-    assert saved["groq_model"] == "openai/gpt-oss-120b"
+from ui.provider_settings import GROQ_MODELS, OLLAMA_MODELS, apply_provider_settings, model_catalog
 
 
-def test_provider_settings_switches_to_ollama_models(tmp_path, monkeypatch):
-    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
-    from PyQt6.QtWidgets import QApplication
-    from ui import provider_settings
+def test_model_catalog_contains_selectable_groq_and_ollama_models():
+    assert model_catalog("Groq") == GROQ_MODELS
+    assert model_catalog("Ollama") == OLLAMA_MODELS
+    assert "openai/gpt-oss-120b" in [model_id for _, model_id in GROQ_MODELS]
+    assert "llama3.2:3b" in [model_id for _, model_id in OLLAMA_MODELS]
 
-    app = QApplication.instance() or QApplication([])
-    monkeypatch.setattr(provider_settings.Path, "home", staticmethod(lambda: tmp_path))
 
-    dialog = provider_settings.ProviderSettingsDialog()
-    dialog.provider.setCurrentText("Ollama")
+def test_provider_settings_persists_selected_groq_model():
+    config = {}
+    updated = apply_provider_settings(
+        config,
+        provider="Groq",
+        api_key=" secret-key ",
+        model="openai/gpt-oss-120b",
+        fallback="Ollama",
+        autostart=True,
+    )
 
-    assert dialog.model.count() == len(provider_settings.OLLAMA_MODELS)
-    assert dialog.model.itemData(1) == "llama3.2:3b"
+    assert updated["ai_provider"] == "groq"
+    assert updated["groq_api_key"] == "secret-key"
+    assert updated["groq_model"] == "openai/gpt-oss-120b"
+    assert updated["groq_quota_fallback"] == "ollama"
+    assert updated["groq_fallback_to_ollama"] is True
+    assert updated["autostart"] is True
+    assert "model" not in updated
+
+
+def test_provider_settings_persists_selected_ollama_model():
+    config = {}
+    updated = apply_provider_settings(
+        config,
+        provider="Ollama",
+        api_key="",
+        model="llama3.2:3b",
+        fallback="Mode Simple",
+        autostart=False,
+    )
+
+    assert updated["ai_provider"] == "ollama"
+    assert updated["model"] == "llama3.2:3b"
+    assert updated["groq_quota_fallback"] == "simple"
+    assert updated["groq_fallback_to_ollama"] is False
+    assert updated["autostart"] is False
+    assert json.dumps(updated, ensure_ascii=False)
