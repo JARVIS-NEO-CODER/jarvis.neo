@@ -40,3 +40,5 @@ jobs:
           name: JARVIS_NEO-Windows
           path: dist/JARVIS_NEO.exe
           if-no-files-found: error
+
+# Rebuild after direct application-entry-point repair.
