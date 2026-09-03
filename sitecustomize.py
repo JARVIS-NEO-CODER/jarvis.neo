@@ -41,11 +41,7 @@ def _install_ollama_groq_bridge() -> None:
         temperature = options.get("temperature", kwargs.get("temperature", 0.2))
         max_tokens = options.get("num_predict", kwargs.get("max_tokens", 2048))
         try:
-            content = GroqProvider(
-                api_key=api_key,
-                model=str(config.get("groq_model", "llama-3.1-8b-instant")),
-                timeout=float(config.get("groq_timeout", 60)),
-            ).chat(messages or [], temperature=temperature, max_tokens=max_tokens)
+            content = GroqProvider(api_key=api_key, model=str(config.get("groq_model", "llama-3.1-8b-instant")), timeout=float(config.get("groq_timeout", 60))).chat(messages or [], temperature=temperature, max_tokens=max_tokens)
             return {"message": {"role": "assistant", "content": content}}
         except Exception:
             if bool(config.get("groq_fallback_to_ollama", True)):
@@ -57,7 +53,6 @@ def _install_ollama_groq_bridge() -> None:
 
 
 def _install_agent_bridge() -> bool:
-    """Attach the modular AgentEngine to the legacy CommandProcessor at runtime."""
     try:
         assistant = sys.modules.get("assistant")
         if assistant is None:
@@ -82,11 +77,7 @@ def _install_agent_bridge() -> bool:
     api_key = str(config.get("groq_api_key", "") or os.getenv("GROQ_API_KEY", "")).strip()
     planner = None
     if api_key:
-        planner = GroqPlanner(
-            api_key=api_key,
-            model=str(config.get("groq_model", "llama-3.1-8b-instant")),
-            timeout=float(config.get("groq_timeout", 60)),
-        )
+        planner = GroqPlanner(api_key=api_key, model=str(config.get("groq_model", "llama-3.1-8b-instant")), timeout=float(config.get("groq_timeout", 60)))
     else:
         try:
             from core.ollama_planner import OllamaPlanner
@@ -95,13 +86,7 @@ def _install_agent_bridge() -> bool:
             pass
 
     action_engine = ActionEngine()
-    agent = AgentEngine(
-        action_engine,
-        planner=GoalPlanner(action_engine, planner),
-        max_retries=int(config.get("agent_max_retries", 2)),
-        max_steps=int(config.get("agent_max_steps", 15)),
-        max_ia_calls=int(config.get("agent_max_ia_calls", 30)),
-    )
+    agent = AgentEngine(action_engine, planner=GoalPlanner(action_engine, planner), max_retries=int(config.get("agent_max_retries", 2)), max_steps=int(config.get("agent_max_steps", 15)), max_ia_calls=int(config.get("agent_max_ia_calls", 30)))
     session = ConversationSession(timeout_seconds=float(config.get("conversation_timeout_seconds", 12)))
     original_process = processor.process
     original_kill = getattr(processor, "kill_app", None)
@@ -116,15 +101,10 @@ def _install_agent_bridge() -> bool:
 
     def run_agent(objective: str):
         objective = objective.strip()
-        if not objective:
-            return "Donne-moi l'objectif à accomplir."
+        if not objective: return "Donne-moi l'objectif à accomplir."
         action_engine.set_mode(ControlMode.AGENT)
         budget = agent.estimate_budget(objective)
-        warning = (
-            "⚠️ Mode Agent : cette tâche peut utiliser plusieurs appels IA et consommer "
-            f"davantage de tokens/crédits. Estimation : {budget['estimated_ia_calls']} appels, "
-            f"risque {budget['risk']}."
-        )
+        warning = f"⚠️ Mode Agent : cette tâche peut utiliser plusieurs appels IA et consommer davantage de tokens/crédits. Estimation : {budget['estimated_ia_calls']} appels, risque {budget['risk']}."
         try:
             _log("Agent", warning)
             result = agent.run(objective, budget_confirm=lambda _b: True)
@@ -140,18 +120,14 @@ def _install_agent_bridge() -> bool:
             from core.web_search import WebSearchProvider
             results = WebSearchProvider().search(query, limit=5)
             _log("Web", f"Recherche réelle : {query} ({len(results)} résultats)")
-            if results and hasattr(assistant, "signals"):
-                assistant.signals.open_url.emit(results[0].url)
-            return "Résultats web : " + " | ".join(
-                f"{r.title} — {r.snippet or r.url}" for r in results
-            )
+            if results and hasattr(assistant, "signals"): assistant.signals.open_url.emit(results[0].url)
+            return "Résultats web : " + " | ".join(f"{r.title} — {r.snippet or r.url}" for r in results)
         except Exception as exc:
             return original_search(query) if original_search else f"Recherche web indisponible : {exc}"
 
     def kill_app(name1, name2=None):
         name = name1 if name1 else name2
-        if not name:
-            return "Nom de programme invalide."
+        if not name: return "Nom de programme invalide."
         try:
             action_engine.set_mode(ControlMode.AGENT)
             result = action_engine.execute("action.close_app", name=name)
@@ -162,29 +138,19 @@ def _install_agent_bridge() -> bool:
             action_engine.set_mode(ControlMode.NORMAL)
 
     def process(text):
-        normalized = text.strip()
-        low = normalized.lower()
-        if not normalized:
-            return ""
+        normalized = text.strip(); low = normalized.lower()
+        if not normalized: return ""
         if low in {"mode agent", "active le mode agent", "active mode agent"}:
-            processor._neo_agent_mode = True
-            session.start()
-            return "Mode Agent activé. Je vérifierai les tâches avant de les déclarer terminées."
+            processor._neo_agent_mode = True; session.start(); return "Mode Agent activé. Je vérifierai les tâches avant de les déclarer terminées."
         if low in {"mode normal", "mode conversation", "désactive le mode agent", "désactive mode agent"}:
-            processor._neo_agent_mode = False
-            session.active = False
-            return "Mode Agent désactivé."
+            processor._neo_agent_mode = False; session.active = False; return "Mode Agent désactivé."
         if low in {"capacités", "capacites", "que peux-tu faire", "qu'est-ce que tu peux faire", "quels sont tes outils"}:
-            try:
-                return capability_summary(action_engine.capabilities)
-            except Exception:
-                return "Je peux contrôler les fonctions actuellement enregistrées dans mon registre de capacités."
+            try: return capability_summary(action_engine.capabilities)
+            except Exception: return "Je peux contrôler les fonctions actuellement enregistrées dans mon registre de capacités."
         if low.startswith("agent "):
-            session.touch()
-            return run_agent(normalized[6:].strip())
+            session.touch(); return run_agent(normalized[6:].strip())
         if getattr(processor, "_neo_agent_mode", False):
-            session.touch()
-            return run_agent(normalized)
+            session.touch(); return run_agent(normalized)
         return original_process(text)
 
     processor._neo_agent_mode = False
@@ -196,23 +162,24 @@ def _install_agent_bridge() -> bool:
     processor.web_search = web_search
     processor.kill_app = kill_app
     processor._neo_agent_bridge = True
+    try: install_voice_session_bridge(assistant, session)
+    except Exception as exc: _log("Voice", f"Session vocale non installée : {exc}")
     try:
-        install_voice_session_bridge(assistant, session)
+        from core.runtime_conversation_bridge import install as install_conversation_bridge
+        install_conversation_bridge(assistant, processor)
     except Exception as exc:
-        _log("Voice", f"Session vocale non installée : {exc}")
-    _log("NEO", "Pont Agent/Web/Session chargé.")
+        _log("IA", f"Routeur conversationnel non installé : {exc}")
+    _log("NEO", "Pont Agent/Web/Session/Conversation chargé.")
     return True
 
 
 def _install_runtime_ui_bridge() -> bool:
     try:
         assistant = sys.modules.get("assistant")
-        if assistant is None or getattr(assistant, "JarvisWindow", None) is None:
-            return False
+        if assistant is None or getattr(assistant, "JarvisWindow", None) is None: return False
         processor = getattr(assistant, "processor", None)
         session = getattr(processor, "_neo_agent_session", None) if processor else None
-        if session is None:
-            return False
+        if session is None: return False
         from core.runtime_ui_bridge import install
         return install(assistant, session)
     except Exception:
@@ -223,8 +190,7 @@ def _install_windows_autostart() -> None:
     try:
         assistant = sys.modules.get("assistant")
         config = getattr(assistant, "CONFIG", None) if assistant else None
-        if config is None:
-            config = _load_config()
+        if config is None: config = _load_config()
         from core.windows_autostart import ensure_from_config
         ensure_from_config(config)
     except Exception:
@@ -233,11 +199,10 @@ def _install_windows_autostart() -> None:
 
 def _bootstrap_runtime() -> None:
     _install_ollama_groq_bridge()
+    _install_windows_autostart()
     for _ in range(240):
         _install_agent_bridge()
-        _install_windows_autostart()
-        if _install_runtime_ui_bridge():
-            return
+        if _install_runtime_ui_bridge(): return
         time.sleep(0.05)
 
 
