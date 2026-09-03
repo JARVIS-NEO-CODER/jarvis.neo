@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import urllib.error
+import urllib.parse
 import urllib.request
 
 
@@ -80,7 +81,8 @@ class GroqProvider:
         if not model_id:
             return False
         try:
-            body = self._request_json(f"{self.models_endpoint}/{urllib.parse.quote(model_id, safe='')}")
+            encoded = urllib.parse.quote(model_id, safe="")
+            body = self._request_json(f"{self.models_endpoint}/{encoded}")
             return isinstance(body, dict) and body.get("id") == model_id
         except RuntimeError as exc:
             if "HTTP 403" in str(exc) or "HTTP 404" in str(exc):
