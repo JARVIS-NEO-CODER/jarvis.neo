@@ -9,6 +9,17 @@
 
 ---
 
+## 🔐 Mode Sentinelle
+
+Le mot de passe du **Mode Sentinelle** est :
+
+```text
+SENTINEL-NEO-2026
+```
+
+Ce code sert uniquement au verrouillage du mode Sentinelle dans NEO. Il ne doit pas être considéré comme un secret cryptographique ou une protection de compte.
+
+
 ## 🚀 Installation rapide depuis zéro
 
 Cette section est le parcours à suivre sur un PC Windows fraîchement installé. **Si tu ne connais pas le projet, commence ici et suis les étapes dans l'ordre.**
