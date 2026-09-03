@@ -123,9 +123,6 @@ class ProviderSettingsDialog(QDialog):
         except Exception:
             pass
 
-        # The running app uses the modular engine installed by
-        # runtime_conversation_bridge. Refresh that engine in place so the
-        # next message really uses the newly selected provider/model.
         runtime_ok = False
         try:
             import assistant
@@ -157,3 +154,5 @@ class ProviderSettingsDialog(QDialog):
 
 
 __all__ = ["ProviderSettingsDialog", "model_catalog", "apply_provider_settings"]
+
+# CI trigger: visible AI settings are part of the packaged application.
