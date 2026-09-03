@@ -27,6 +27,21 @@ class NeoMemory:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._initialize()
 
+    @staticmethod
+    def _sqlite_value(value: Any) -> Any:
+        """Convert application values to SQLite-safe scalar values.
+
+        SQLite's Python adapter accepts scalar values, not arbitrary tuples,
+        lists, dicts or custom objects. Tool handlers can legitimately return
+        structured values, so memory must serialize them instead of allowing a
+        logging operation to break the action that just succeeded.
+        """
+        if value is None or isinstance(value, (str, int, float, bytes)):
+            return value
+        if isinstance(value, (dict, list, tuple, set)):
+            return json.dumps(value, ensure_ascii=False, default=str)
+        return str(value)
+
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path, timeout=10)
         conn.row_factory = sqlite3.Row
@@ -96,8 +111,8 @@ class NeoMemory:
         """Persist one bus event without making the memory layer bus-aware."""
         metadata = json.dumps(event.payload, ensure_ascii=False, default=str)
         self.record_event(
-            kind=event.name,
-            message=event.name,
+            kind=self._sqlite_value(event.name),
+            message=self._sqlite_value(event.name),
             source="event_bus",
             metadata=metadata,
             timestamp=event.timestamp,
@@ -113,13 +128,20 @@ class NeoMemory:
         timestamp: float | None = None,
     ) -> int:
         """Store one raw observation and return its database id."""
+        values = (
+            timestamp if timestamp is not None else self._now(),
+            self._sqlite_value(kind),
+            self._sqlite_value(source),
+            self._sqlite_value(message),
+            self._sqlite_value(metadata),
+        )
         with self._connect() as conn:
             cur = conn.execute(
                 """
                 INSERT INTO events(timestamp, kind, source, message, metadata)
                 VALUES (?, ?, ?, ?, ?)
                 """,
-                (timestamp if timestamp is not None else self._now(), kind, source, message, metadata),
+                values,
             )
             return int(cur.lastrowid)
 
@@ -136,7 +158,7 @@ class NeoMemory:
         params: list[Any] = []
         if kind:
             clauses.append("kind = ?")
-            params.append(kind)
+            params.append(self._sqlite_value(kind))
         if since is not None:
             clauses.append("timestamp >= ?")
             params.append(float(since))
@@ -160,6 +182,15 @@ class NeoMemory:
         timestamp: float | None = None,
     ) -> int:
         """Store a sampled machine state."""
+        values = (
+            timestamp if timestamp is not None else self._now(),
+            self._sqlite_value(cpu_percent),
+            self._sqlite_value(ram_percent),
+            self._sqlite_value(gpu_percent),
+            self._sqlite_value(disk_percent),
+            self._sqlite_value(temperature_c),
+            self._sqlite_value(metadata),
+        )
         with self._connect() as conn:
             cur = conn.execute(
                 """
@@ -168,15 +199,7 @@ class NeoMemory:
                     disk_percent, temperature_c, metadata
                 ) VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
-                (
-                    timestamp if timestamp is not None else self._now(),
-                    cpu_percent,
-                    ram_percent,
-                    gpu_percent,
-                    disk_percent,
-                    temperature_c,
-                    metadata,
-                ),
+                values,
             )
             return int(cur.lastrowid)
 
@@ -201,6 +224,15 @@ class NeoMemory:
         """Create or update a durable fact/preference/habit."""
         confidence = max(0.0, min(float(confidence), 1.0))
         now = self._now()
+        values = (
+            now,
+            now,
+            self._sqlite_value(category),
+            self._sqlite_value(key),
+            self._sqlite_value(value),
+            confidence,
+            self._sqlite_value(source),
+        )
         with self._connect() as conn:
             conn.execute(
                 """
@@ -213,11 +245,11 @@ class NeoMemory:
                     confidence = excluded.confidence,
                     source = excluded.source
                 """,
-                (now, now, category, key, value, confidence, source),
+                values,
             )
             row = conn.execute(
                 "SELECT id FROM facts WHERE category = ? AND key = ?",
-                (category, key),
+                (self._sqlite_value(category), self._sqlite_value(key)),
             ).fetchone()
         return int(row["id"])
 
@@ -231,7 +263,7 @@ class NeoMemory:
         params: list[Any] = [float(min_confidence)]
         if category:
             clauses.append("category = ?")
-            params.append(category)
+            params.append(self._sqlite_value(category))
         with self._connect() as conn:
             rows = conn.execute(
                 f"SELECT * FROM facts WHERE {' AND '.join(clauses)} "
