@@ -37,8 +37,11 @@ class _DuckParser(HTMLParser):
         attrs = dict(attrs)
         classes = set((attrs.get("class") or "").split())
         if tag == "a" and "result__a" in classes:
+            if self._current_url:
+                self._append()
             self._current_url = attrs.get("href", "")
             self._title = ""
+            self._snippet = ""
             self._in_title = True
         elif tag in {"a", "div", "span"} and classes & {"result__snippet", "result__body"}:
             if self._current_url:
@@ -47,15 +50,20 @@ class _DuckParser(HTMLParser):
     def handle_endtag(self, tag):
         if tag == "a" and self._in_title:
             self._in_title = False
-            self._append()
         if tag in {"a", "div", "span"} and self._in_snippet:
             self._in_snippet = False
+            self._append()
 
     def handle_data(self, data):
         if self._in_title:
             self._title += data
         elif self._in_snippet:
             self._snippet += data
+
+    def close(self):
+        super().close()
+        if self._current_url:
+            self._append()
 
     def _append(self):
         title = re.sub(r"\s+", " ", self._title).strip()
@@ -70,6 +78,8 @@ class _DuckParser(HTMLParser):
         self._current_url = ""
         self._title = ""
         self._snippet = ""
+        self._in_title = False
+        self._in_snippet = False
 
 
 class WebSearchProvider:
@@ -95,6 +105,7 @@ class WebSearchProvider:
             html = response.read(2_000_000).decode(charset, errors="replace")
         parser = _DuckParser()
         parser.feed(html)
+        parser.close()
         unique: list[SearchResult] = []
         seen: set[str] = set()
         for result in parser.results:
