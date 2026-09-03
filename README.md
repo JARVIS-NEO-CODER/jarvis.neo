@@ -4,16 +4,232 @@
 
 > [!WARNING]
 > 🔴 **OLLAMA DOIT ÊTRE INSTALLÉ SÉPARÉMENT SUR LE PC.**
-> 
-> J.A.R.V.I.S. NEO n'embarque pas le moteur Ollama ni les modèles dans son `.exe`. Installez **Ollama** et téléchargez au minimum le modèle local utilisé par votre configuration avant de lancer NEO. Consultez [`OLLAMA_INSTALLATION.md`](OLLAMA_INSTALLATION.md) pour la procédure.
-
-J.A.R.V.I.S. NEO est un projet expérimental qui cherche à aller plus loin qu'un assistant qui attend simplement une commande.
-
-L'idée est de construire un véritable **cockpit personnel** : NEO observe son environnement informatique, comprend ce qui est en train de se passer, adapte son comportement, peut effectuer des actions et présente son état dans une interface HUD futuriste.
+>
+> J.A.R.V.I.S. NEO n'embarque pas le moteur Ollama ni les modèles dans son `.exe`. Il faut installer Ollama séparément et télécharger au moins un modèle local avant le premier lancement.
 
 ---
 
-## 🚀 Le concept
+## 🚀 Installation rapide depuis zéro
+
+Cette section est le parcours à suivre sur un PC Windows fraîchement installé. **Si tu ne connais pas le projet, commence ici et suis les étapes dans l'ordre.**
+
+### 1. Prérequis
+
+NEO est prévu en priorité pour **Windows 10/11**.
+
+Il est recommandé d'avoir :
+
+- un PC 64 bits ;
+- 8 Go de RAM minimum, 16 Go recommandés ;
+- un microphone si tu veux utiliser la voix ;
+- une connexion Internet pour installer les composants et utiliser les fournisseurs cloud ;
+- suffisamment d'espace disque pour Ollama et le modèle local.
+
+> ⚠️ NEO peut fonctionner avec une machine modeste, mais les modèles IA locaux peuvent être lourds. Plus le modèle est grand, plus la consommation de RAM/CPU augmente.
+
+### 2. Installer Python
+
+Si tu utilises le projet depuis ses sources, installe **Python 3.11**.
+
+Pendant l'installation de Python, active l'option :
+
+**Add Python to PATH**
+
+Puis ouvre un nouveau terminal et vérifie :
+
+```powershell
+python --version
+```
+
+Tu dois obtenir une version Python 3.11.x.
+
+Si `python` n'est pas reconnu, Python n'est pas correctement installé ou n'est pas présent dans le PATH.
+
+### 3. Télécharger J.A.R.V.I.S. NEO
+
+Tu peux utiliser la version `.exe` fournie par le projet ou récupérer le code source depuis GitHub.
+
+Pour une installation depuis les sources :
+
+```powershell
+git clone https://github.com/JARVIS-NEO-CODER/jarvis.neo.git
+cd jarvis.neo
+```
+
+Si Git n'est pas installé, installe Git pour Windows puis recommence cette étape.
+
+### 4. 🔴 Installer Ollama
+
+**Ollama n'est PAS inclus dans J.A.R.V.I.S. NEO.**
+
+Installe Ollama séparément sur le PC, puis vérifie qu'il fonctionne :
+
+```powershell
+ollama --version
+```
+
+Ensuite, télécharge le modèle local recommandé par la configuration de NEO :
+
+```powershell
+ollama pull llama3.2:3b
+```
+
+Vérifie ensuite que le modèle est disponible :
+
+```powershell
+ollama list
+```
+
+Tu dois voir `llama3.2:3b` dans la liste.
+
+> 💡 Si tu choisis un autre modèle, assure-toi qu'il correspond au modèle configuré dans NEO. Les modèles de vision sont séparés du modèle conversationnel.
+
+### 5. Installer les dépendances
+
+Depuis le dossier du projet :
+
+```powershell
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+Si `requirements.txt` n'existe pas dans la version que tu as téléchargée, **arrête-toi ici** : la distribution que tu utilises n'est pas correctement préparée pour cette méthode d'installation. N'installe pas une liste de paquets trouvée au hasard sur Internet.
+
+### 6. Configurer NEO
+
+Lance NEO une première fois. Les paramètres permettent notamment de configurer :
+
+- le fournisseur IA ;
+- la clé API Groq si tu utilises Groq ;
+- le modèle cloud ;
+- le modèle Ollama ;
+- le mode de fallback lorsque le quota cloud est atteint ;
+- le délai d'attente ;
+- le démarrage automatique de Windows.
+
+🔐 **Ne mets jamais ta clé API Groq directement dans le code source ou dans un dépôt GitHub.** Utilise les paramètres prévus par NEO.
+
+### 7. 🚀 Premier lancement depuis les sources
+
+Dans le dossier du projet :
+
+```powershell
+python assistant.py
+```
+
+Si Windows affiche une erreur indiquant qu'un module Python manque, vérifie d'abord que l'étape 5 a été effectuée dans le même environnement Python.
+
+### 8. 📦 Utiliser la version `.exe`
+
+Si tu disposes de `JARVIS_NEO.exe`, tu n'as normalement pas besoin de lancer `assistant.py`.
+
+Cependant, **l'installation d'Ollama reste nécessaire** si ta configuration utilise le moteur local.
+
+Lance simplement :
+
+```text
+JARVIS_NEO.exe
+```
+
+Au premier démarrage, vérifie que :
+
+1. le HUD apparaît ;
+2. NEO indique correctement son fournisseur IA ;
+3. Ollama est détecté si le mode local est utilisé ;
+4. le microphone fonctionne si la voix est activée ;
+5. une demande simple reçoit une réponse.
+
+### 9. 🎙️ Tester la voix
+
+Si la voix est activée, vérifie que Windows voit correctement ton microphone.
+
+Commence par une commande simple. Par exemple :
+
+```text
+Jarvis, quelle heure est-il ?
+```
+
+Une fois la session vocale commencée, les demandes de suivi peuvent être effectuées sans répéter le mot d'activation pendant la courte fenêtre de conversation prévue par NEO.
+
+### 10. 🧪 Vérification finale
+
+Une installation est considérée comme fonctionnelle lorsque :
+
+- [ ] NEO démarre sans erreur bloquante ;
+- [ ] le HUD fonctionne ;
+- [ ] le fournisseur IA affiché correspond réellement au fournisseur utilisé ;
+- [ ] Ollama répond si le mode local est choisi ;
+- [ ] le modèle configuré est installé ;
+- [ ] une conversation simple fonctionne ;
+- [ ] la voix fonctionne si elle est activée ;
+- [ ] une action demandée est vérifiée avant d'être annoncée comme terminée ;
+- [ ] le fallback cloud/local fonctionne lorsque sa condition est déclenchée.
+
+---
+
+## 🛠️ Dépannage rapide
+
+### `python` n'est pas reconnu
+
+Réinstalle Python 3.11 en activant **Add Python to PATH**, puis ouvre un nouveau terminal.
+
+### `ollama` n'est pas reconnu
+
+Ollama n'est pas installé ou son installation n'est pas disponible dans le PATH. Installe Ollama séparément, puis ouvre un nouveau terminal.
+
+### Le modèle Ollama est introuvable
+
+Vérifie :
+
+```powershell
+ollama list
+```
+
+Puis installe le modèle attendu, par exemple :
+
+```powershell
+ollama pull llama3.2:3b
+```
+
+### NEO utilise un autre fournisseur que prévu
+
+Ouvre les paramètres et vérifie le fournisseur sélectionné, le modèle et le mode de fallback. Le HUD doit refléter l'état réel du fournisseur utilisé.
+
+### Groq ne fonctionne plus après plusieurs requêtes
+
+Le quota ou une limite du fournisseur peut avoir été atteint. Vérifie la configuration du fallback. NEO peut basculer vers Ollama ou vers le mode Simple selon le choix enregistré.
+
+### Le microphone ne fonctionne pas
+
+Vérifie dans **Paramètres Windows → Système → Son → Entrée** que le bon microphone est sélectionné et autorisé.
+
+### NEO ralentit le PC
+
+Les modèles locaux peuvent consommer beaucoup de CPU/RAM. Utilise un modèle plus léger, réduis les fonctions lourdes et vérifie le mode Performance/Gaming lorsque tu joues.
+
+---
+
+## ❓ FAQ
+
+### Est-ce qu'Ollama est inclus dans NEO ?
+
+**Non.** Ollama doit être installé séparément sur le PC. Les modèles sont eux aussi téléchargés séparément.
+
+### Est-ce qu'une clé Groq est obligatoire ?
+
+**Non**, si tu utilises uniquement un modèle local avec Ollama. Une clé Groq est nécessaire pour utiliser le fournisseur Groq.
+
+### Est-ce que NEO envoie toutes mes conversations dans le cloud ?
+
+Non par principe : NEO est conçu selon une approche **local-first**. Les requêtes envoyées à un fournisseur cloud dépendent du fournisseur et de la configuration choisie.
+
+### Puis-je jouer pendant que NEO fonctionne ?
+
+Oui, mais la charge dépend des fonctions activées et du modèle utilisé. Le projet prévoit une gestion des performances afin de limiter les fonctions coûteuses lorsque le PC est fortement sollicité.
+
+---
+
+## 🧩 Le concept
 
 Imagine un assistant qui ne se contente pas de répondre à :
 
