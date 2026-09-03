@@ -1,0 +1,19 @@
+# J.A.R.V.I.S. NEO runtime dependencies
+# Python 3.11 recommended
+
+PyQt6>=6.7,<7
+psutil>=6.0,<7
+requests>=2.32,<3
+numpy>=1.26,<3
+pyautogui>=0.9.54,<1
+pyperclip>=1.9,<2
+SpeechRecognition>=3.10,<4
+ollama>=0.4,<1
+edge-tts>=6.1,<7
+pygame>=2.6,<3
+opencv-python>=4.10,<5
+sounddevice>=0.5,<1
+soundfile>=0.12,<1
+fastapi>=0.115,<1
+uvicorn>=0.30,<1
+openai-whisper>=20240930
