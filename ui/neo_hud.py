@@ -32,6 +32,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from core.ai_model_catalog import model_catalog
 from core.ai_status import format_ai_status
 from .arc_reactor import ArcReactor
 from .hud import HudPanel
@@ -87,7 +88,6 @@ class GroqSettingsDialog(QDialog):
         self.api_key.setEchoMode(QLineEdit.EchoMode.Password)
         self.api_key.setPlaceholderText("gsk_…")
 
-        self.model = QLineEdit(str(config.get("groq_model", DEFAULT_GROQ_MODEL)))
         self.provider = QComboBox()
         self.provider.addItem("Groq prioritaire → fallback configuré", "groq")
         self.provider.addItem("Ollama uniquement", "ollama")
@@ -95,6 +95,12 @@ class GroqSettingsDialog(QDialog):
         index = self.provider.findData(current_provider)
         if index >= 0:
             self.provider.setCurrentIndex(index)
+
+        self.model = QComboBox()
+        self.model.setMinimumHeight(40)
+        self.model.setMinimumContentsLength(34)
+        self.model.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
+        self.provider.currentIndexChanged.connect(self._refresh_models)
 
         self.ollama_enabled = QCheckBox("Autoriser Ollama comme fallback")
         self.ollama_enabled.setChecked(bool(config.get("ollama_enabled", True)))
@@ -108,7 +114,7 @@ class GroqSettingsDialog(QDialog):
             self.quota_fallback.setCurrentIndex(fallback_index)
 
         form.addRow("Clé API Groq", self.api_key)
-        form.addRow("Modèle Groq", self.model)
+        form.addRow("Modèle IA", self.model)
         form.addRow("Fournisseur", self.provider)
         form.addRow("Fallback", self.ollama_enabled)
         form.addRow("Quota Groq", self.quota_fallback)
@@ -128,10 +134,11 @@ class GroqSettingsDialog(QDialog):
         actions.addWidget(buttons)
         root.addLayout(actions)
 
-        self.status = QLabel("Modèle recommandé : llama-3.1-8b-instant")
+        self.status = QLabel()
         self.status.setStyleSheet("color:#7895A5;font-size:10px;")
         self.status.setWordWrap(True)
         root.addWidget(self.status)
+        self._refresh_models()
 
     @staticmethod
     def _load_config_file() -> dict:
@@ -146,6 +153,33 @@ class GroqSettingsDialog(QDialog):
             return self.core.CONFIG
         return self._load_config_file()
 
+    def _refresh_models(self, *_):
+        provider = str(self.provider.currentData() or "groq")
+        config = self._current_config()
+        current = (
+            str(config.get("groq_model", DEFAULT_GROQ_MODEL))
+            if provider == "groq"
+            else str(config.get("model", "llama3.2:3b"))
+        )
+        models = model_catalog(provider)
+        self.model.blockSignals(True)
+        self.model.clear()
+        for label, model_id in models:
+            self.model.addItem(label, model_id)
+        index = self.model.findData(current)
+        if index < 0 and current:
+            self.model.addItem(f"Personnalisé • {current}", current)
+            index = self.model.count() - 1
+        if index >= 0:
+            self.model.setCurrentIndex(index)
+        self.model.blockSignals(False)
+        self.status.setText(
+            f"{self.model.count()} modèles disponibles pour {provider.upper()}. "
+            "La vision continue d'utiliser Ollama."
+        )
+        self.api_key.setEnabled(provider == "groq")
+        self.test_button.setEnabled(provider == "groq")
+
     def test_groq(self) -> None:
         key = self.api_key.text().strip()
         if not key:
@@ -156,7 +190,7 @@ class GroqSettingsDialog(QDialog):
             from core.groq_provider import GroqProvider
             provider = GroqProvider(
                 api_key=key,
-                model=self.model.text().strip() or DEFAULT_GROQ_MODEL,
+                model=str(self.model.currentData() or self.model.currentText().strip() or DEFAULT_GROQ_MODEL),
                 timeout=15,
             )
             result = provider.chat(
@@ -173,8 +207,13 @@ class GroqSettingsDialog(QDialog):
     def save(self) -> None:
         config = self._current_config()
         config["groq_api_key"] = self.api_key.text().strip()
-        config["groq_model"] = self.model.text().strip() or DEFAULT_GROQ_MODEL
-        config["ai_provider"] = self.provider.currentData() or "groq"
+        provider = self.provider.currentData() or "groq"
+        selected_model = str(self.model.currentData() or self.model.currentText().strip())
+        if provider == "groq":
+            config["groq_model"] = selected_model or DEFAULT_GROQ_MODEL
+        else:
+            config["model"] = selected_model or "llama3.2:3b"
+        config["ai_provider"] = provider
         config["ollama_enabled"] = self.ollama_enabled.isChecked()
         config["groq_quota_fallback"] = self.quota_fallback.currentData() or "ollama"
         config.setdefault("groq_timeout", 60)
