@@ -75,6 +75,7 @@ def _install_agent_bridge() -> bool:
         from core.goal_planner import GoalPlanner
         from core.groq_planner import GroqPlanner
         from core.neo_capabilities import capability_summary
+        from core.voice_session_bridge import install as install_voice_session_bridge
     except Exception:
         return False
 
@@ -176,7 +177,7 @@ def _install_agent_bridge() -> bool:
             return "Mode Agent désactivé."
         if low in {"capacités", "capacites", "que peux-tu faire", "qu'est-ce que tu peux faire", "quels sont tes outils"}:
             try:
-                return "Capacités actives : " + capability_summary(action_engine.capabilities)
+                return capability_summary(action_engine.capabilities)
             except Exception:
                 return "Je peux contrôler les fonctions actuellement enregistrées dans mon registre de capacités."
         if low.startswith("agent "):
@@ -185,8 +186,6 @@ def _install_agent_bridge() -> bool:
         if getattr(processor, "_neo_agent_mode", False):
             session.touch()
             return run_agent(normalized)
-        # A short-lived conversation session prevents repetitive wake words while
-        # leaving the existing wake-word layer responsible for opening a session.
         if session.accepts_followup():
             session.touch()
         return original_process(text)
@@ -200,6 +199,10 @@ def _install_agent_bridge() -> bool:
     processor.web_search = web_search
     processor.kill_app = kill_app
     processor._neo_agent_bridge = True
+    try:
+        install_voice_session_bridge(assistant, session)
+    except Exception as exc:
+        _log("Voice", f"Session vocale non installée : {exc}")
     _log("NEO", "Pont Agent/Web/Session chargé.")
     return True
 
