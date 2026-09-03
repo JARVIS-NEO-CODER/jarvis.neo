@@ -1,0 +1,3 @@
+# Optional local Whisper voice recognition
+# Install only if local Whisper transcription is desired.
+openai-whisper>=20240930
