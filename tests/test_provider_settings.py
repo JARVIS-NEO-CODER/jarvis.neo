@@ -1,6 +1,6 @@
 import json
 
-from ui.provider_settings import GROQ_MODELS, OLLAMA_MODELS, apply_provider_settings, model_catalog
+from core.ai_model_catalog import GROQ_MODELS, OLLAMA_MODELS, apply_provider_settings, model_catalog
 
 
 def test_model_catalog_contains_selectable_groq_and_ollama_models():
