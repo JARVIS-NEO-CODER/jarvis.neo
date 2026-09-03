@@ -7,6 +7,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from core.ai_model_catalog import GROQ_MODELS
+
 
 DEFAULT_MODEL = "llama-3.1-8b-instant"
 USER_AGENT = "JARVIS-NEO/1.1"
@@ -90,15 +92,10 @@ class GroqProvider:
             raise
 
     def _find_working_model(self) -> str | None:
-        """Find a callable model without assuming every documented model is enabled."""
+        """Find an accessible chat model without assuming documented models are enabled."""
         candidates = [self.model, DEFAULT_MODEL]
-        try:
-            discovered = self.list_models()
-        except Exception:
-            discovered = []
-        for item in discovered:
-            model_id = str(item.get("id", "")).strip()
-            if model_id and model_id not in candidates:
+        for _, model_id in GROQ_MODELS:
+            if model_id not in candidates:
                 candidates.append(model_id)
 
         for candidate in candidates:
@@ -136,7 +133,7 @@ class GroqProvider:
             working = self._find_working_model()
             if not working or working == self.model:
                 raise RuntimeError(
-                    f"Modèle Groq indisponible : {self.model}. Aucun autre modèle accessible n'a pu être confirmé avec cette clé."
+                    f"Modèle Groq indisponible : {self.model}. Aucun autre modèle de conversation accessible n'a pu être confirmé avec cette clé."
                 ) from exc
 
             self.model = working
