@@ -1,0 +1,49 @@
+name: Wire Groq model catalog into visible settings
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  wire:
+    if: "!contains(github.event.head_commit.message, '[skip groq-wire]')"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch visible Groq settings
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('assistant.py')
+          text = p.read_text(encoding='utf-8')
+          old = '''        self._groq_models = [
+            ("Llama 3.1 8B Instant", "llama-3.1-8b-instant"),
+            ("Llama 3.3 70B Versatile", "llama-3.3-70b-versatile"),
+            ("GPT-OSS 20B", "openai/gpt-oss-20b"),
+            ("GPT-OSS 120B", "openai/gpt-oss-120b"),
+            ("Qwen 3.8 27B", "qwen/qwen3.8-27b"),
+            ("Groq Compound", "groq/compound"),
+            ("Groq Compound Mini", "groq/compound-mini"),
+        ]'''
+          new = '''        # Single source of truth: the visible settings panel uses the shared
+        # Groq catalog instead of maintaining a second stale model list.
+        try:
+            from core.ai_model_catalog import GROQ_MODELS
+            self._groq_models = list(GROQ_MODELS)
+        except Exception:
+            self._groq_models = []'''
+          if old not in text:
+              raise SystemExit('Expected legacy Groq model block not found')
+          text = text.replace(old, new, 1)
+          p.write_text(text, encoding='utf-8')
+      - name: Commit wiring
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add assistant.py
+          git diff --cached --quiet && exit 0
+          git commit -m 'fix: wire visible Groq selector to shared catalog [skip groq-wire]'
+          git push
