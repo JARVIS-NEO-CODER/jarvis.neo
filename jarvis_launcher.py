@@ -38,6 +38,14 @@ def main() -> None:
             assistant.log.warning(f"Cockpit HUD non chargé : {exc}")
         except Exception:
             pass
+    try:
+        from ui.command_deck_bridge import install as install_command_deck
+        install_command_deck(assistant)
+    except Exception as exc:
+        try:
+            assistant.log.warning(f"Command Deck non chargé : {exc}")
+        except Exception:
+            pass
     assistant.main()
 
 
