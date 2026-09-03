@@ -219,10 +219,23 @@ def _install_runtime_ui_bridge() -> bool:
         return False
 
 
+def _install_windows_autostart() -> None:
+    try:
+        assistant = sys.modules.get("assistant")
+        config = getattr(assistant, "CONFIG", None) if assistant else None
+        if config is None:
+            config = _load_config()
+        from core.windows_autostart import ensure_from_config
+        ensure_from_config(config)
+    except Exception:
+        pass
+
+
 def _bootstrap_runtime() -> None:
     _install_ollama_groq_bridge()
     for _ in range(240):
         _install_agent_bridge()
+        _install_windows_autostart()
         if _install_runtime_ui_bridge():
             return
         time.sleep(0.05)
