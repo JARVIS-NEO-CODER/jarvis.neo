@@ -1,0 +1,74 @@
+name: Fix model selector
+
+on:
+  push:
+    paths:
+      - .github/workflows/fix-model-selector.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Patch assistant.py
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          path = Path("assistant.py")
+          text = path.read_text(encoding="utf-8")
+
+          if "QComboBox" not in text.split("# --- CONFIGURATION ---", 1)[0]:
+              text = text.replace(
+                  "QMainWindow, QProgressBar, QPushButton, QTextEdit, QVBoxLayout, ",
+                  "QMainWindow, QProgressBar, QPushButton, QTextEdit, QVBoxLayout, QComboBox, "
+              )
+
+          marker = "class GroqSettingsWidget(QWidget):"
+          if marker not in text:
+              raise SystemExit("GroqSettingsWidget introuvable")
+
+          old = '''        layout.addWidget(QLabel("Modèle Groq"))\n        self.model = QLineEdit(CONFIG.get("groq_model", "openai/gpt-oss-20b"))\n        self.model.setPlaceholderText("openai/gpt-oss-20b")\n        layout.addWidget(self.model)\n        self.enabled = QCheckBox("Activer Groq pour les conversations")\n        self.enabled.setChecked(CONFIG.get("ai_provider", "groq") == "groq")\n        layout.addWidget(self.enabled)'''
+
+          new = '''        layout.addWidget(QLabel("Fournisseur IA"))\n        self.provider = QComboBox()\n        self.provider.addItem("Groq", "groq")\n        self.provider.addItem("Ollama", "ollama")\n        current_provider = CONFIG.get("ai_provider", "groq")\n        provider_index = self.provider.findData(current_provider)\n        self.provider.setCurrentIndex(provider_index if provider_index >= 0 else 0)\n        layout.addWidget(self.provider)\n\n        layout.addWidget(QLabel("Modèle IA"))\n        self.model = QComboBox()\n        self.model.setMinimumContentsLength(28)\n        self.model.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)\n        self._groq_models = [\n            ("Llama 3.1 8B Instant", "llama-3.1-8b-instant"),\n            ("Llama 3.3 70B Versatile", "llama-3.3-70b-versatile"),\n            ("GPT-OSS 20B", "openai/gpt-oss-20b"),\n            ("GPT-OSS 120B", "openai/gpt-oss-120b"),\n            ("Qwen 3.8 27B", "qwen/qwen3.8-27b"),\n            ("Groq Compound", "groq/compound"),\n            ("Groq Compound Mini", "groq/compound-mini"),\n        ]\n        self._ollama_models = [\n            ("Grand • Llama 3.1 8B", "llama3.1:8b"),\n            ("Moyen • Llama 3.2 3B", "llama3.2:3b"),\n            ("Petit • Phi-3 Mini", "phi3:mini"),\n            ("Mini • Gemma 2 2B", "gemma2:2b"),\n        ]\n        self.provider.currentIndexChanged.connect(self._refresh_model_choices)\n        self._refresh_model_choices()\n        layout.addWidget(self.model)\n        self.enabled = QCheckBox("Activer Groq pour les conversations")\n        self.enabled.setChecked(current_provider == "groq")\n        self.enabled.toggled.connect(lambda checked: self.provider.setCurrentIndex(0 if checked else 1))\n        layout.addWidget(self.enabled)'''
+
+          if old not in text:
+              raise SystemExit("Bloc QLineEdit du modèle introuvable: arrêt sans modification")
+          text = text.replace(old, new, 1)
+
+          method = '''\n    def _refresh_model_choices(self):\n        provider = self.provider.currentData() or "groq"\n        current = (\n            CONFIG.get("groq_model", "openai/gpt-oss-20b")\n            if provider == "groq"\n            else CONFIG.get("model", "llama3.2:3b")\n        )\n        models = self._groq_models if provider == "groq" else self._ollama_models\n        self.model.blockSignals(True)\n        self.model.clear()\n        for label, model_id in models:\n            self.model.addItem(label, model_id)\n        index = self.model.findData(current)\n        if index < 0 and current:\n            self.model.addItem(f"Personnalisé • {current}", current)\n            index = self.model.count() - 1\n        if index >= 0:\n            self.model.setCurrentIndex(index)\n        self.model.blockSignals(False)\n\n'''
+          text = text.replace("    def save_settings(self):\n", method + "    def save_settings(self):\n", 1)
+
+          text = text.replace(
+              'CONFIG["groq_model"] = self.model.text().strip() or "openai/gpt-oss-20b"',
+              'selected_model = self.model.currentData() or self.model.currentText().strip()\n        provider = self.provider.currentData() or "groq"\n        if provider == "groq":\n            CONFIG["groq_model"] = str(selected_model) or "openai/gpt-oss-20b"\n        else:\n            CONFIG["model"] = str(selected_model) or "llama3.2:3b"'
+          )
+          text = text.replace(
+              'CONFIG["ai_provider"] = "groq" if self.enabled.isChecked() else "ollama"',
+              'CONFIG["ai_provider"] = provider'
+          )
+          text = text.replace(
+              'model=self.model.text().strip() or "openai/gpt-oss-20b"',
+              'model=str(self.model.currentData() or self.model.currentText().strip() or "openai/gpt-oss-20b")'
+          )
+
+          path.write_text(text, encoding="utf-8")
+          print("assistant.py patched successfully")
+
+      - name: Remove temporary workflow and commit
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add assistant.py
+          git rm .github/workflows/fix-model-selector.yml
+          git diff --cached --quiet && exit 0 || true
+          git commit -m "fix: use dropdown for Groq and Ollama models"
+          git push
