@@ -32,6 +32,7 @@ a = Analysis(
     runtime_hooks=['sitecustomize.py', 'jarvis_hud_runtime_hook.py'],
     excludes=[],
     noarchive=False,
+    noarchive=False,
     optimize=0,
 )
 pyz = PYZ(a.pure)
@@ -55,3 +56,5 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
 )
+
+# Force a fresh Windows artifact after the visible UI repair.
