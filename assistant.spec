@@ -2,11 +2,12 @@
 
 
 a = Analysis(
-    ['assistant.py'],
+    ['jarvis_launcher.py'],
     pathex=['.'],
     binaries=[],
     datas=[],
     hiddenimports=[
+        'assistant',
         'sitecustomize',
         'core.action_engine',
         'core.agent_engine',
@@ -29,7 +30,7 @@ a = Analysis(
     ],
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=['sitecustomize.py', 'jarvis_hud_runtime_hook.py'],
+    runtime_hooks=['sitecustomize.py'],
     excludes=[],
     noarchive=False,
     optimize=0,
@@ -55,5 +56,3 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
 )
-
-# Force a fresh Windows artifact after the visible UI repair.
