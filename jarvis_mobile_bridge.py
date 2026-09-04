@@ -24,7 +24,7 @@ from typing import Any, Awaitable, Callable
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 
-DEFAULT_PORT = 47822
+DEFAULT_PORT = 8890
 DISCOVERY_PORT = 47821
 PROTOCOL = "jarvis-neo/1"
 PAIRING_TTL = 300
@@ -39,297 +39,264 @@ def _code() -> str:
     return f"{secrets.randbelow(1_000_000):06d}"
 
 
-def _token() -> str:
-    return secrets.token_urlsafe(32)
-
-
 @dataclass
-class MobileSession:
+class Device:
     device_id: str
+    name: str
     token: str
-    websocket: WebSocket
-    connected_at: float = field(default_factory=time.time)
+    created_at: float = field(default_factory=time.time)
+    last_seen: float = field(default_factory=time.time)
 
 
-@dataclass
 class MobileBridge:
-    host: str = "0.0.0.0"
-    port: int = DEFAULT_PORT
-    discovery_port: int = DISCOVERY_PORT
-    device_name: str = "JARVIS NEO PC"
-    action_handler: ActionHandler | None = None
-    state_provider: StateProvider | None = None
-    app: FastAPI = field(init=False)
-    _pairing_code: str = field(default_factory=_code, init=False)
-    _pairing_expires_at: float = field(default_factory=lambda: time.time() + PAIRING_TTL, init=False)
-    _devices: dict[str, dict[str, Any]] = field(default_factory=dict, init=False)
-    _sessions: dict[str, MobileSession] = field(default_factory=dict, init=False)
-    _lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False)
-    _state: dict[str, Any] = field(default_factory=dict, init=False)
-    _events: list[dict[str, Any]] = field(default_factory=list, init=False)
-    _state_task: asyncio.Task | None = field(default=None, init=False)
-    _loop: asyncio.AbstractEventLoop | None = field(default=None, init=False)
-
-    def __post_init__(self) -> None:
-        self._load_devices()
+    def __init__(self, host: str = "0.0.0.0", port: int = DEFAULT_PORT):
+        self.host = host
+        self.port = port
+        self.discovery_port = DISCOVERY_PORT
         self.app = FastAPI(title="JARVIS NEO Mobile Bridge", version=PROTOCOL)
-        self._routes()
-        self.app.add_event_handler("startup", self._startup)
-        self.app.add_event_handler("shutdown", self._shutdown)
+        self.action_handler: ActionHandler | None = None
+        self.state_provider: StateProvider | None = None
+        self._devices: dict[str, Device] = {}
+        self._pairing_code = _code()
+        self._pairing_expires_at = time.time() + PAIRING_TTL
+        self._clients: set[WebSocket] = set()
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._discovery_thread: threading.Thread | None = None
+        self._load_devices()
+        self._register_routes()
 
     @property
     def pairing_code(self) -> str:
+        if time.time() >= self._pairing_expires_at:
+            self._rotate_pairing_code()
         return self._pairing_code
 
     @property
     def pairing_expires_at(self) -> float:
         return self._pairing_expires_at
 
-    def rotate_pairing_code(self) -> str:
+    def _rotate_pairing_code(self) -> None:
         self._pairing_code = _code()
         self._pairing_expires_at = time.time() + PAIRING_TTL
-        return self._pairing_code
 
     def _load_devices(self) -> None:
         try:
-            data = json.loads(DEVICES_FILE.read_text(encoding="utf-8"))
-            if isinstance(data, list):
-                self._devices = {
-                    str(d["device_id"]): d for d in data
-                    if isinstance(d, dict) and d.get("device_id") and d.get("token")
-                }
+            raw = json.loads(DEVICES_FILE.read_text(encoding="utf-8"))
+            for item in raw if isinstance(raw, list) else []:
+                if item.get("device_id") and item.get("token"):
+                    self._devices[item["device_id"]] = Device(
+                        device_id=item["device_id"],
+                        name=item.get("name", "JARVIS Mobile"),
+                        token=item["token"],
+                        created_at=float(item.get("created_at", time.time())),
+                        last_seen=float(item.get("last_seen", time.time())),
+                    )
         except Exception:
             self._devices = {}
 
     def _save_devices(self) -> None:
         DEVICES_FILE.parent.mkdir(parents=True, exist_ok=True)
-        tmp = DEVICES_FILE.with_suffix(".tmp")
-        tmp.write_text(json.dumps(list(self._devices.values()), ensure_ascii=False, indent=2), encoding="utf-8")
-        tmp.replace(DEVICES_FILE)
+        payload = [
+            {
+                "device_id": d.device_id,
+                "name": d.name,
+                "token": d.token,
+                "created_at": d.created_at,
+                "last_seen": d.last_seen,
+            }
+            for d in self._devices.values()
+        ]
+        DEVICES_FILE.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    def set_state(self, **values: Any) -> None:
-        self._state.update(values)
-
-    def snapshot(self) -> dict[str, Any]:
-        result = dict(self._state)
-        if self.state_provider:
-            try:
-                result.update(self.state_provider())
-            except Exception:
-                result["state_provider_error"] = True
-        result.update({"protocol": PROTOCOL, "device": self.device_name,
-                       "connected_devices": len(self._sessions),
-                       "authorized_devices": len(self._devices), "ts": time.time()})
-        return result
-
-    def _authorized(self, token: str, device_id: str | None = None) -> dict[str, Any] | None:
-        token = str(token or "")
+    def _authorized(self, token: str | None, device_id: str | None = None) -> Device | None:
+        if not token:
+            return None
         for device in self._devices.values():
-            if device_id and str(device.get("device_id")) != device_id:
-                continue
-            if secrets.compare_digest(str(device.get("token", "")), token):
+            if secrets.compare_digest(device.token, str(token)):
+                if device_id is not None and device.device_id != device_id:
+                    return None
+                device.last_seen = time.time()
                 return device
         return None
 
-    async def _startup(self) -> None:
-        self._loop = asyncio.get_running_loop()
-        self._state_task = asyncio.create_task(self._state_broadcast_loop())
+    def snapshot(self) -> dict[str, Any]:
+        state = dict(self.state_provider() if self.state_provider else {})
+        state.setdefault("status", "online")
+        state["protocol"] = PROTOCOL
+        state["port"] = self.port
+        state["timestamp"] = time.time()
+        return state
 
-    async def _shutdown(self) -> None:
-        if self._state_task:
-            self._state_task.cancel()
-            try:
-                await self._state_task
-            except asyncio.CancelledError:
-                pass
-            self._state_task = None
-        self._loop = None
+    def discovery_payload(self) -> bytes:
+        payload = {
+            "protocol": PROTOCOL,
+            "port": self.port,
+            "hostname": socket.gethostname(),
+            "device": "JARVIS NEO PC",
+        }
+        return json.dumps(payload, ensure_ascii=False).encode("utf-8")
 
-    async def _state_broadcast_loop(self) -> None:
-        while True:
-            await asyncio.sleep(STATE_BROADCAST_INTERVAL)
-            if self._sessions:
-                await self.broadcast_state()
+    def _register_routes(self) -> None:
+        @self.app.post("/api/pair")
+        async def pair(payload: dict[str, Any]):
+            result = await self._pair_device(payload)
+            if result is None:
+                return JSONResponse({"error": "PAIRING_CODE_INVALID_OR_EXPIRED"}, status_code=403)
+            return result
 
-    def publish_from_thread(self, event: str, payload: dict[str, Any] | None = None) -> None:
-        if self._loop and not self._loop.is_closed():
-            asyncio.run_coroutine_threadsafe(self.publish(event, payload), self._loop)
-
-    async def _pair_device(self, payload: dict[str, Any]) -> dict[str, Any] | None:
-        code = str(payload.get("code", ""))
-        if time.time() >= self._pairing_expires_at or not secrets.compare_digest(code, self._pairing_code):
-            return None
-        device_id = str(payload.get("device_id") or secrets.token_hex(8))
-        token = _token()
-        self._devices[device_id] = {"device_id": device_id, "token": token,
-                                    "name": str(payload.get("name") or "Appareil mobile"),
-                                    "created_at": time.time()}
-        self._save_devices()
-        self.rotate_pairing_code()
-        return {"device_id": device_id, "token": token, "protocol": PROTOCOL,
-                "server": self.device_name}
-
-    def _routes(self) -> None:
         @self.app.get("/api/system")
-        async def system(token: str = "") -> dict[str, Any]:
+        async def system(token: str = ""):
             if not self._authorized(token):
-                return JSONResponse(status_code=401, content={"error": "TOKEN_INVALID"})
+                return JSONResponse({"error": "UNAUTHORIZED"}, status_code=401)
             return self.snapshot()
 
         @self.app.get("/api/devices")
-        async def devices(token: str = "") -> dict[str, Any]:
+        async def devices(token: str = ""):
             if not self._authorized(token):
-                return JSONResponse(status_code=401, content={"error": "TOKEN_INVALID"})
-            return {"devices": [{"device_id": d["device_id"], "name": d.get("name", "Appareil"),
-                                 "connected": any(s.device_id == d["device_id"] for s in self._sessions.values())}
-                                for d in self._devices.values()]}
+                return JSONResponse({"error": "UNAUTHORIZED"}, status_code=401)
+            return {"devices": [
+                {"device_id": d.device_id, "name": d.name, "last_seen": d.last_seen}
+                for d in self._devices.values()
+            ]}
 
         @self.app.post("/api/revoke")
-        async def revoke(payload: dict[str, Any]) -> dict[str, Any]:
-            device = self._authorized(str(payload.get("token", "")))
-            if not device:
-                return JSONResponse(status_code=401, content={"error": "TOKEN_INVALID"})
-            target = str(payload.get("device_id", ""))
-            if target == device["device_id"]:
-                return JSONResponse(status_code=400, content={"error": "SELF_REVOKE_REQUIRES_LOCAL_CONFIRMATION"})
-            if target in self._devices:
-                self._devices.pop(target)
+        async def revoke(payload: dict[str, Any]):
+            if not self._authorized(payload.get("token")):
+                return JSONResponse({"error": "UNAUTHORIZED"}, status_code=401)
+            device_id = str(payload.get("device_id", "")).strip()
+            if device_id and device_id in self._devices:
+                del self._devices[device_id]
                 self._save_devices()
             return {"ok": True}
 
+        @self.app.post("/api/command")
+        async def command(payload: dict[str, Any]):
+            return await self._handle_action(payload, "command")
+
+        @self.app.post("/api/agent")
+        async def agent(payload: dict[str, Any]):
+            return await self._handle_action(payload, "agent")
+
+        @self.app.post("/api/agent/stop")
+        async def agent_stop(payload: dict[str, Any]):
+            return await self._handle_action(payload, "agent.stop")
+
         @self.app.get("/api/events")
-        async def events(token: str = "", limit: int = 40) -> dict[str, Any]:
+        async def events(token: str = ""):
             if not self._authorized(token):
-                return JSONResponse(status_code=401, content={"error": "TOKEN_INVALID"})
-            return {"events": self._events[-max(1, min(limit, 100)):]} 
+                return JSONResponse({"error": "UNAUTHORIZED"}, status_code=401)
+            return {"events": []}
 
         @self.app.websocket("/ws")
-        async def websocket(ws: WebSocket) -> None:
-            await ws.accept()
-            session: MobileSession | None = None
+        async def websocket_endpoint(websocket: WebSocket):
+            token = websocket.query_params.get("token", "")
+            if not self._authorized(token):
+                await websocket.close(code=1008)
+                return
+            await websocket.accept()
+            self._loop = asyncio.get_running_loop()
+            self._clients.add(websocket)
             try:
-                first = await asyncio.wait_for(ws.receive_json(), timeout=10)
-                protocol = str(first.get("protocol", ""))
-                if protocol != PROTOCOL:
-                    await ws.send_json({"type": "error", "code": "PROTOCOL_MISMATCH", "protocol": PROTOCOL})
-                    await ws.close(code=1002)
-                    return
-
-                if first.get("type") == "pair":
-                    paired = await self._pair_device(first)
-                    if not paired:
-                        await ws.send_json({"type": "error", "code": "PAIRING_FAILED"})
-                        await ws.close(code=1008)
-                        return
-                    token = paired["token"]
-                    device_id = paired["device_id"]
-                    await ws.send_json({"type": "paired", **paired})
-                elif first.get("type") == "authenticate":
-                    device_id = str(first.get("device_id", ""))
-                    token = str(first.get("token", ""))
-                    if not self._authorized(token, device_id):
-                        await ws.send_json({"type": "error", "code": "TOKEN_INVALID"})
-                        await ws.close(code=1008)
-                        return
-                    await ws.send_json({"type": "authenticated", "protocol": PROTOCOL, "device_id": device_id})
-                else:
-                    await ws.send_json({"type": "error", "code": "AUTHENTICATION_REQUIRED"})
-                    await ws.close(code=1008)
-                    return
-
-                session = MobileSession(device_id=device_id, token=token, websocket=ws)
-                async with self._lock:
-                    old = self._sessions.get(token)
-                    self._sessions[token] = session
-                if old:
-                    try:
-                        await old.websocket.close(code=1000)
-                    except Exception:
-                        pass
-                await ws.send_json({"type": "status", "payload": self.snapshot()})
-
+                await websocket.send_json({"type": "state", "state": self.snapshot()})
                 while True:
-                    msg = await ws.receive_json()
-                    msg_token = str(msg.get("token", ""))
-                    if not secrets.compare_digest(msg_token, session.token) or not self._authorized(msg_token, session.device_id):
-                        await ws.send_json({"type": "error", "code": "TOKEN_INVALID"})
-                        await ws.close(code=1008)
-                        return
-                    kind = str(msg.get("type", ""))
-                    request_id = msg.get("request_id") or msg.get("id")
+                    message = await websocket.receive_json()
+                    msg_token = message.get("token", token)
+                    if not self._authorized(msg_token):
+                        await websocket.close(code=1008)
+                        break
+                    kind = str(message.get("type", "")).strip().lower()
                     if kind == "ping":
-                        await ws.send_json({"type": "pong", "request_id": request_id, "ts": time.time()})
-                    elif kind in {"status", "sync"}:
-                        await ws.send_json({"type": "status", "request_id": request_id, "payload": self.snapshot()})
-                    elif kind in {"command", "action"}:
-                        args = msg.get("args") if isinstance(msg.get("args"), dict) else {}
-                        result = await self._execute(str(msg.get("action") or "command"), {
-                            **args, "command": str(msg.get("command") or args.get("command", "")).strip(),
-                            "confirmed": bool(msg.get("confirmed", False)), "device_id": session.device_id})
-                        await ws.send_json({"type": "response", "request_id": request_id, "ok": True, "result": result})
-                    else:
-                        await ws.send_json({"type": "error", "request_id": request_id, "code": "UNKNOWN_MESSAGE"})
-            except (WebSocketDisconnect, asyncio.TimeoutError, asyncio.CancelledError):
+                        await websocket.send_json({"type": "response", "id": message.get("id"), "ok": True, "result": {"pong": True}})
+                    elif kind == "status" or kind == "sync":
+                        await websocket.send_json({"type": "state", "state": self.snapshot(), "id": message.get("id")})
+                    elif kind == "command":
+                        result = await self._handle_action({**message, "token": msg_token}, "command")
+                        await websocket.send_json({"type": "response", "id": message.get("id"), "ok": True, "result": result})
+            except WebSocketDisconnect:
                 pass
             finally:
-                if session:
-                    async with self._lock:
-                        if self._sessions.get(session.token) is session:
-                            self._sessions.pop(session.token, None)
+                self._clients.discard(websocket)
 
-    async def _execute(self, action: str, args: dict[str, Any]) -> Any:
+        @self.app.on_event("startup")
+        async def startup():
+            self._loop = asyncio.get_running_loop()
+            asyncio.create_task(self._broadcast_loop())
+
+    async def _pair_device(self, payload: dict[str, Any]) -> dict[str, Any] | None:
+        if time.time() >= self._pairing_expires_at:
+            return None
+        if not secrets.compare_digest(str(payload.get("code", "")), self._pairing_code):
+            return None
+        device_id = str(payload.get("device_id") or secrets.token_hex(8)).strip()
+        name = str(payload.get("name") or "JARVIS Mobile").strip()[:80]
+        token = secrets.token_urlsafe(32)
+        self._devices[device_id] = Device(device_id=device_id, name=name, token=token)
+        self._save_devices()
+        self._rotate_pairing_code()
+        return {"protocol": PROTOCOL, "device_id": device_id, "token": token, "port": self.port}
+
+    async def _handle_action(self, payload: dict[str, Any], action: str):
+        if not self._authorized(payload.get("token")):
+            return JSONResponse({"error": "UNAUTHORIZED"}, status_code=401)
+        args = dict(payload)
+        args.pop("token", None)
         if self.action_handler is None:
-            return {"accepted": False, "reason": "NO_HOST_ACTION_HANDLER"}
+            return {"accepted": False, "reason": "ACTION_HANDLER_UNAVAILABLE"}
         try:
             result = self.action_handler(action, args)
-            return await result if asyncio.iscoroutine(result) else result
+            if asyncio.iscoroutine(result):
+                result = await result
+            return result
         except Exception as exc:
             return {"accepted": False, "error": str(exc)}
 
-    async def publish(self, event: str, payload: dict[str, Any] | None = None) -> None:
-        item = {"event": event, "payload": payload or {}, "ts": time.time()}
-        self._events.append(item)
-        self._events = self._events[-100:]
-        message = {"type": "event", **item}
-        for session in list(self._sessions.values()):
-            try:
-                await session.websocket.send_json(message)
-            except Exception:
-                pass
-
-    async def broadcast_state(self) -> None:
-        message = {"type": "state", "state": self.snapshot(), "ts": time.time()}
-        for session in list(self._sessions.values()):
-            try:
-                await session.websocket.send_json(message)
-            except Exception:
-                pass
-
-    def discovery_payload(self) -> bytes:
-        return json.dumps({"type": "jarvis_discovery", "protocol": PROTOCOL,
-                           "device": self.device_name, "port": self.port,
-                           "hostname": socket.gethostname()}).encode()
-
-    def start_discovery(self) -> threading.Thread:
-        def worker() -> None:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-            payload = self.discovery_payload()
-            while True:
+    async def _broadcast_loop(self):
+        while True:
+            await asyncio.sleep(STATE_BROADCAST_INTERVAL)
+            if not self._clients:
+                continue
+            message = {"type": "state", "state": self.snapshot()}
+            dead: list[WebSocket] = []
+            for client in list(self._clients):
                 try:
-                    sock.sendto(payload, ("255.255.255.255", self.discovery_port))
-                except OSError:
-                    pass
-                threading.Event().wait(3)
-        t = threading.Thread(target=worker, name="jarvis-mobile-discovery", daemon=True)
-        t.start()
-        return t
+                    await client.send_json(message)
+                except Exception:
+                    dead.append(client)
+            for client in dead:
+                self._clients.discard(client)
+
+    def publish_from_thread(self, event: str, payload: dict[str, Any]) -> None:
+        if self._loop is None or not self._clients:
+            return
+        message = {"type": "event", "event": event, "payload": payload, "ts": time.time()}
+        asyncio.run_coroutine_threadsafe(self._broadcast_event(message), self._loop)
+
+    async def _broadcast_event(self, message: dict[str, Any]) -> None:
+        for client in list(self._clients):
+            try:
+                await client.send_json(message)
+            except Exception:
+                self._clients.discard(client)
+
+    def start_discovery(self) -> None:
+        if self._discovery_thread and self._discovery_thread.is_alive():
+            return
+
+        def worker():
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+            try:
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+                while True:
+                    try:
+                        sock.sendto(self.discovery_payload(), ("255.255.255.255", self.discovery_port))
+                    except OSError:
+                        pass
+                    time.sleep(3)
+            finally:
+                sock.close()
+
+        self._discovery_thread = threading.Thread(target=worker, daemon=True, name="NEO-mobile-discovery")
+        self._discovery_thread.start()
 
 
 bridge = MobileBridge()
-
-if __name__ == "__main__":
-    import uvicorn
-    bridge.start_discovery()
-    print(f"JARVIS NEO Mobile Bridge: port {bridge.port} | pairing code: {bridge.pairing_code}")
-    uvicorn.run(bridge.app, host=bridge.host, port=bridge.port)
