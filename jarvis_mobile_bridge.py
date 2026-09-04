@@ -2,11 +2,11 @@
 
 Protocol contract:
 - discovery UDP: 47821
-- WebSocket: /ws
+- WebSocket: /ws on 47822 by default
 - protocol: jarvis-neo/1
-- first connection uses a 6-digit pairing code
-- subsequent connections authenticate with the persisted device token
-- successful pairing returns a per-device bearer token
+- first WebSocket frame is pair or authenticate
+- pairing uses a 6-digit code with a 5-minute TTL
+- subsequent sessions authenticate with a per-device bearer token
 - no arbitrary shell execution is exposed
 """
 from __future__ import annotations
@@ -24,7 +24,7 @@ from typing import Any, Awaitable, Callable
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 
-DEFAULT_PORT = 8890
+DEFAULT_PORT = 47822
 DISCOVERY_PORT = 47821
 PROTOCOL = "jarvis-neo/1"
 PAIRING_TTL = 300
@@ -61,6 +61,7 @@ class MobileBridge:
         self._pairing_expires_at = time.time() + PAIRING_TTL
         self._clients: set[WebSocket] = set()
         self._loop: asyncio.AbstractEventLoop | None = None
+        self._broadcast_task: asyncio.Task | None = None
         self._discovery_thread: threading.Thread | None = None
         self._load_devices()
         self._register_routes()
@@ -91,7 +92,7 @@ class MobileBridge:
                         created_at=float(item.get("created_at", time.time())),
                         last_seen=float(item.get("last_seen", time.time())),
                     )
-        except Exception:
+        except (OSError, ValueError, TypeError):
             self._devices = {}
 
     def _save_devices(self) -> None:
@@ -106,7 +107,9 @@ class MobileBridge:
             }
             for d in self._devices.values()
         ]
-        DEVICES_FILE.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp = DEVICES_FILE.with_suffix(".tmp")
+        tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp.replace(DEVICES_FILE)
 
     def _authorized(self, token: str | None, device_id: str | None = None) -> Device | None:
         if not token:
@@ -129,6 +132,7 @@ class MobileBridge:
 
     def discovery_payload(self) -> bytes:
         payload = {
+            "type": "jarvis_discovery",
             "protocol": PROTOCOL,
             "port": self.port,
             "hostname": socket.gethostname(),
@@ -139,20 +143,22 @@ class MobileBridge:
     def _register_routes(self) -> None:
         @self.app.post("/api/pair")
         async def pair(payload: dict[str, Any]):
+            if str(payload.get("protocol", PROTOCOL)) != PROTOCOL:
+                return JSONResponse({"error": "PROTOCOL_MISMATCH"}, status_code=400)
             result = await self._pair_device(payload)
             if result is None:
                 return JSONResponse({"error": "PAIRING_CODE_INVALID_OR_EXPIRED"}, status_code=403)
             return result
 
         @self.app.get("/api/system")
-        async def system(token: str = ""):
-            if not self._authorized(token):
+        async def system(token: str = "", device_id: str = ""):
+            if not self._authorized(token, device_id or None):
                 return JSONResponse({"error": "UNAUTHORIZED"}, status_code=401)
             return self.snapshot()
 
         @self.app.get("/api/devices")
-        async def devices(token: str = ""):
-            if not self._authorized(token):
+        async def devices(token: str = "", device_id: str = ""):
+            if not self._authorized(token, device_id or None):
                 return JSONResponse({"error": "UNAUTHORIZED"}, status_code=401)
             return {"devices": [
                 {"device_id": d.device_id, "name": d.name, "last_seen": d.last_seen}
@@ -161,7 +167,7 @@ class MobileBridge:
 
         @self.app.post("/api/revoke")
         async def revoke(payload: dict[str, Any]):
-            if not self._authorized(payload.get("token")):
+            if not self._authorized(payload.get("token"), payload.get("device_id")):
                 return JSONResponse({"error": "UNAUTHORIZED"}, status_code=401)
             device_id = str(payload.get("device_id", "")).strip()
             if device_id and device_id in self._devices:
@@ -182,47 +188,77 @@ class MobileBridge:
             return await self._handle_action(payload, "agent.stop")
 
         @self.app.get("/api/events")
-        async def events(token: str = ""):
-            if not self._authorized(token):
+        async def events(token: str = "", device_id: str = ""):
+            if not self._authorized(token, device_id or None):
                 return JSONResponse({"error": "UNAUTHORIZED"}, status_code=401)
             return {"events": []}
 
         @self.app.websocket("/ws")
         async def websocket_endpoint(websocket: WebSocket):
-            token = websocket.query_params.get("token", "")
-            if not self._authorized(token):
-                await websocket.close(code=1008)
-                return
             await websocket.accept()
             self._loop = asyncio.get_running_loop()
-            self._clients.add(websocket)
             try:
+                first = await asyncio.wait_for(websocket.receive_json(), timeout=10)
+                if str(first.get("protocol", "")) != PROTOCOL:
+                    await websocket.send_json({"type": "error", "code": "PROTOCOL_MISMATCH"})
+                    await websocket.close(code=1002)
+                    return
+
+                kind = str(first.get("type", "")).strip().lower()
+                if kind == "pair":
+                    result = await self._pair_device(first)
+                    if result is None:
+                        await websocket.send_json({"type": "error", "code": "PAIRING_CODE_INVALID_OR_EXPIRED"})
+                        await websocket.close(code=1008)
+                        return
+                    device = self._devices[result["device_id"]]
+                    await websocket.send_json({"type": "paired", **result})
+                elif kind == "authenticate":
+                    device = self._authorized(first.get("token"), first.get("device_id"))
+                    if device is None:
+                        await websocket.send_json({"type": "error", "code": "UNAUTHORIZED"})
+                        await websocket.close(code=1008)
+                        return
+                    await websocket.send_json({"type": "authenticated", "protocol": PROTOCOL, "device_id": device.device_id})
+                else:
+                    await websocket.send_json({"type": "error", "code": "AUTHENTICATION_REQUIRED"})
+                    await websocket.close(code=1008)
+                    return
+
+                self._clients.add(websocket)
+                if self._broadcast_task is None or self._broadcast_task.done():
+                    self._broadcast_task = asyncio.create_task(self._broadcast_loop())
                 await websocket.send_json({"type": "state", "state": self.snapshot()})
+
                 while True:
                     message = await websocket.receive_json()
-                    msg_token = message.get("token", token)
-                    if not self._authorized(msg_token):
+                    msg_token = message.get("token") or (device.token if device else None)
+                    msg_device_id = message.get("device_id") or device.device_id
+                    if self._authorized(msg_token, msg_device_id) is None:
+                        await websocket.send_json({"type": "error", "code": "UNAUTHORIZED"})
                         await websocket.close(code=1008)
                         break
                     kind = str(message.get("type", "")).strip().lower()
+                    request_id = message.get("request_id")
                     if kind == "ping":
-                        await websocket.send_json({"type": "response", "id": message.get("id"), "ok": True, "result": {"pong": True}})
-                    elif kind == "status" or kind == "sync":
-                        await websocket.send_json({"type": "state", "state": self.snapshot(), "id": message.get("id")})
-                    elif kind == "command":
-                        result = await self._handle_action({**message, "token": msg_token}, "command")
-                        await websocket.send_json({"type": "response", "id": message.get("id"), "ok": True, "result": result})
-            except WebSocketDisconnect:
+                        await websocket.send_json({"type": "response", "request_id": request_id, "ok": True, "result": {"pong": True}})
+                    elif kind in {"status", "sync"}:
+                        await websocket.send_json({"type": "state", "request_id": request_id, "state": self.snapshot()})
+                    elif kind == "action":
+                        action = str(message.get("action", "")).strip()
+                        args = message.get("args") if isinstance(message.get("args"), dict) else {}
+                        result = await self._handle_action({"token": msg_token, "device_id": msg_device_id, **args}, action)
+                        await websocket.send_json({"type": "response", "request_id": request_id, "ok": not isinstance(result, JSONResponse), "result": result})
+                    else:
+                        await websocket.send_json({"type": "error", "request_id": request_id, "code": "UNKNOWN_MESSAGE_TYPE"})
+            except (WebSocketDisconnect, asyncio.TimeoutError):
                 pass
             finally:
                 self._clients.discard(websocket)
 
-        @self.app.on_event("startup")
-        async def startup():
-            self._loop = asyncio.get_running_loop()
-            asyncio.create_task(self._broadcast_loop())
-
     async def _pair_device(self, payload: dict[str, Any]) -> dict[str, Any] | None:
+        if str(payload.get("protocol", PROTOCOL)) != PROTOCOL:
+            return None
         if time.time() >= self._pairing_expires_at:
             return None
         if not secrets.compare_digest(str(payload.get("code", "")), self._pairing_code):
@@ -236,10 +272,11 @@ class MobileBridge:
         return {"protocol": PROTOCOL, "device_id": device_id, "token": token, "port": self.port}
 
     async def _handle_action(self, payload: dict[str, Any], action: str):
-        if not self._authorized(payload.get("token")):
-            return JSONResponse({"error": "UNAUTHORIZED"}, status_code=401)
+        if not self._authorized(payload.get("token"), payload.get("device_id")):
+            return {"accepted": False, "reason": "UNAUTHORIZED"}
         args = dict(payload)
         args.pop("token", None)
+        args.pop("device_id", None)
         if self.action_handler is None:
             return {"accepted": False, "reason": "ACTION_HANDLER_UNAVAILABLE"}
         try:
@@ -251,19 +288,14 @@ class MobileBridge:
             return {"accepted": False, "error": str(exc)}
 
     async def _broadcast_loop(self):
-        while True:
+        while self._clients:
             await asyncio.sleep(STATE_BROADCAST_INTERVAL)
-            if not self._clients:
-                continue
             message = {"type": "state", "state": self.snapshot()}
-            dead: list[WebSocket] = []
             for client in list(self._clients):
                 try:
                     await client.send_json(message)
                 except Exception:
-                    dead.append(client)
-            for client in dead:
-                self._clients.discard(client)
+                    self._clients.discard(client)
 
     def publish_from_thread(self, event: str, payload: dict[str, Any]) -> None:
         if self._loop is None or not self._clients:
