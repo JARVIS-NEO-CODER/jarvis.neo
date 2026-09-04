@@ -45,7 +45,7 @@ def main() -> None:
     hud.activateWindow()
 
     if not bool(assistant.CONFIG.get("main_hud_enabled", True)):
-        hud.hide_hud()
+        hud.hide()
     else:
         try:
             assistant.speech.say("Centre de commande NEO en ligne.")
