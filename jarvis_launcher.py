@@ -40,20 +40,29 @@ def main() -> None:
 
     from ui.neo_main_hud_v2 import NeoMainHud
     hud = NeoMainHud(assistant)
+
+    # Le HUD principal doit toujours être visible au démarrage.
+    # L'ancien paramètre main_hud_enabled pouvait laisser le HUD caché tout
+    # en continuant à exécuter son timer _refresh en arrière-plan.
+    cfg = getattr(assistant, "CONFIG", None)
+    if isinstance(cfg, dict):
+        cfg["main_hud_enabled"] = True
+        try:
+            assistant.save_config(cfg)
+        except Exception:
+            pass
+
     hud.show()
     hud.raise_()
     hud.activateWindow()
 
-    if not bool(assistant.CONFIG.get("main_hud_enabled", True)):
-        hud.hide()
-    else:
-        try:
-            assistant.speech.say("Centre de commande NEO en ligne.")
-        except Exception:
-            pass
+    try:
+        assistant.speech.say("Centre de commande NEO en ligne.")
+    except Exception:
+        pass
 
-    # Lancer les services après que Qt ait pris la main : cela évite qu'un
-    # worker vocal/monitoring ne retarde ou ne monopolise l'initialisation du HUD.
+    # Les workers démarrent seulement après l'affichage du HUD et l'entrée
+    # dans la boucle Qt, afin qu'aucun service ne bloque son initialisation.
     QTimer.singleShot(0, _start_core_workers)
 
     sys.exit(app.exec())
