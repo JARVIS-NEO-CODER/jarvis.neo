@@ -66,56 +66,120 @@ def _start_mobile_bridge() -> None:
         import uvicorn
         from jarvis_mobile_bridge import bridge
 
+        SAFE_COMMAND_ACTIONS = {
+            "command", "agent", "agent.stop", "pc.volume", "pc.media", "pc.app.open",
+            "pc.browser.open", "jarvis.mode.set", "pc.performance", "sync.request",
+        }
+        CONFIRMATION_REQUIRED = {
+            "pc.system.shutdown", "pc.system.restart", "pc.input.keyboard",
+            "pc.input.mouse", "pc.file.delete", "pc.remote.session",
+        }
+
         def action_handler(action: str, args: dict):
-            if action == "command":
-                command = str(args.get("command", "")).strip()
-                if not command:
-                    return {"accepted": False, "reason": "EMPTY_COMMAND"}
-                assistant.signals.log_msg.emit("Vous (Mobile)", command)
-                assistant.command_queue.put(command)
-                return {"accepted": True, "command": command}
-            if action == "agent":
-                instruction = str(args.get("instruction", "")).strip()
-                if not instruction:
-                    return {"accepted": False, "reason": "EMPTY_INSTRUCTION"}
-                assistant.signals.log_msg.emit("Vous (Mobile)", instruction)
-                assistant.command_queue.put(instruction)
-                return {"accepted": True, "instruction": instruction}
-            if action == "agent.stop":
+            action = str(action).strip()
+            if action in CONFIRMATION_REQUIRED:
+                return {
+                    "accepted": False,
+                    "requires_confirmation": True,
+                    "reason": "HIGH_RISK_ACTION_REQUIRES_LOCAL_CONFIRMATION",
+                }
+            if action not in SAFE_COMMAND_ACTIONS:
+                return {"accepted": False, "reason": "ACTION_NOT_ALLOWLISTED"}
+
+            if action == "sync.request":
+                return {"accepted": True, "sync": "state", "note": "État courant fourni par state_provider."}
+
+            if action == "pc.performance":
+                try:
+                    return {"accepted": True, "performance": assistant.collect_system_metrics()}
+                except Exception as exc:
+                    return {"accepted": False, "error": str(exc)}
+
+            if action == "jarvis.mode.set":
+                mode = str(args.get("mode", "normal")).strip()
+                command = {
+                    "normal": "mode normal",
+                    "conversation": "mode conversation",
+                    "agent": "mode agent",
+                    "sentinel": "active le mode sentinelle",
+                }.get(mode)
+                if command is None:
+                    return {"accepted": False, "reason": "MODE_NOT_ALLOWED"}
+            elif action == "pc.volume":
+                delta = int(args.get("delta", 0))
+                if delta not in {-10, -5, 5, 10}:
+                    return {"accepted": False, "reason": "VOLUME_DELTA_NOT_ALLOWED"}
+                command = f"volume {'+' if delta > 0 else '-'} {abs(delta)}"
+            elif action == "pc.media":
+                command_name = str(args.get("command", "")).strip().lower()
+                if command_name not in {"play_pause", "next", "previous", "stop"}:
+                    return {"accepted": False, "reason": "MEDIA_COMMAND_NOT_ALLOWED"}
+                command = {
+                    "play_pause": "pause la musique",
+                    "next": "musique suivante",
+                    "previous": "musique précédente",
+                    "stop": "arrête la musique",
+                }[command_name]
+            elif action == "pc.app.open":
+                app = str(args.get("app", "")).strip()
+                allowed = {"ets2": "ouvre euro truck simulator 2", "notepad": "ouvre le bloc-notes", "calculator": "ouvre la calculatrice"}
+                command = allowed.get(app.lower())
+                if command is None:
+                    return {"accepted": False, "reason": "APP_NOT_ALLOWLISTED"}
+            elif action == "pc.browser.open":
+                url = str(args.get("url", "")).strip()
+                if not (url.startswith("https://") or url.startswith("http://")) or len(url) > 500:
+                    return {"accepted": False, "reason": "URL_INVALID"}
+                command = f"ouvre {url}"
+            elif action == "agent.stop":
                 assistant.state.abort_requested = True
                 return {"accepted": True, "stopped": True}
-            return {"accepted": False, "reason": "UNKNOWN_ACTION"}
+            elif action == "agent":
+                instruction = str(args.get("instruction", "")).strip()
+                if not instruction or len(instruction) > 2000:
+                    return {"accepted": False, "reason": "INSTRUCTION_INVALID"}
+                command = instruction
+            else:
+                command = str(args.get("command", "")).strip()
+                if not command or len(command) > 2000:
+                    return {"accepted": False, "reason": "COMMAND_INVALID"}
+
+            assistant.signals.log_msg.emit("Vous (Mobile)", command)
+            assistant.command_queue.put(command)
+            return {"accepted": True, "queued": True, "command": command}
 
         def state_provider():
-            metrics = assistant.collect_system_metrics()
+            try:
+                metrics = assistant.collect_system_metrics()
+            except Exception:
+                metrics = {}
+            state = getattr(assistant, "state", None)
+            cfg = getattr(assistant, "CONFIG", {})
             return {
-                "status": "online" if assistant.state.is_active else "offline",
-                "cpu": metrics.get("cpu_percent", 0),
-                "ram": metrics.get("ram_percent", 0),
-                "disk": metrics.get("disk_percent", 0),
-                "battery": metrics.get("battery_percent"),
+                "status": "online" if bool(getattr(state, "is_active", True)) else "offline",
                 "cpu_percent": metrics.get("cpu_percent", 0),
                 "ram_percent": metrics.get("ram_percent", 0),
                 "disk_percent": metrics.get("disk_percent", 0),
                 "battery_percent": metrics.get("battery_percent"),
-                "mic_enabled": bool(assistant.state.mic_enabled),
-                "voice_enabled": bool(assistant.state.voice_enabled),
-                "listening": bool(assistant.state.is_listening),
-                "speaking": bool(assistant.state.is_speaking),
-                "processing": bool(assistant.state.is_processing),
+                "mic_enabled": bool(getattr(state, "mic_enabled", True)),
+                "voice_enabled": bool(getattr(state, "voice_enabled", True)),
+                "listening": bool(getattr(state, "is_listening", False)),
+                "speaking": bool(getattr(state, "is_speaking", False)),
+                "processing": bool(getattr(state, "is_processing", False)),
                 "model": assistant.get_active_model(False),
-                "provider": assistant.CONFIG.get("ai_provider", "ollama"),
+                "provider": cfg.get("ai_provider", "ollama"),
+                "timestamp": __import__("time").time(),
             }
 
         bridge.action_handler = action_handler
         bridge.state_provider = state_provider
         bridge.start_discovery()
         threading.Thread(
-            target=lambda: uvicorn.run(bridge.app, host=bridge.host, port=bridge.port, log_level="warning"),
+            target=lambda: uvicorn.run(bridge.app, host=bridge.host, port=bridge.ws_port, log_level="warning"),
             daemon=True,
             name="NEO-mobile-bridge",
         ).start()
-        assistant.log.info(f"MOBILE: passerelle active sur le port {bridge.port} | code: {bridge.pairing_code}")
+        assistant.log.info(f"MOBILE: passerelle active sur le port {bridge.ws_port} | code: {bridge.pairing_code}")
     except Exception as exc:
         try:
             assistant.log.warning(f"MOBILE: passerelle non démarrée : {exc}")
