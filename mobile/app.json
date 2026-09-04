@@ -5,7 +5,17 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
-    "android": {"package": "com.jarvisneo.mobile"},
-    "ios": {"bundleIdentifier": "com.jarvisneo.mobile"}
+    "android": {
+      "package": "com.jarvisneo.mobile",
+      "usesCleartextTraffic": true
+    },
+    "ios": {
+      "bundleIdentifier": "com.jarvisneo.mobile",
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true
+        }
+      }
+    }
   }
 }
