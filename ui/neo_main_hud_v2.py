@@ -50,6 +50,7 @@ class NeoMainHud(QMainWindow):
         hv.addWidget(title); hv.addWidget(subtitle); hv.addStretch()
         self.status = QLabel("● ONLINE"); self.status.setObjectName("Online"); hv.addWidget(self.status)
         self.clock = QLabel("--:--:--"); hv.addWidget(self.clock)
+        mobile = QPushButton("📱 MOBILE"); mobile.setObjectName("MobileButton"); mobile.clicked.connect(self._show_mobile_pairing); hv.addWidget(mobile)
         layout.addWidget(header)
 
         hero = QFrame(); hero.setObjectName("Hero")
@@ -92,6 +93,19 @@ class NeoMainHud(QMainWindow):
         command.addWidget(self.input, 1); command.addWidget(send); command.addWidget(compact); layout.addLayout(command)
         self._style()
 
+    def _show_mobile_pairing(self):
+        try:
+            from jarvis_mobile_bridge import bridge
+            ip = self._get("get_local_ip", default="127.0.0.1")
+            code = bridge.pairing_code
+            QMessageBox.information(
+                self,
+                "J.A.R.V.I.S. NEO • Connexion mobile",
+                f"Adresse du PC : {ip}\nPort : {bridge.port}\n\nCode d'appairage : {code}\n\nCe code est à usage unique. Entrez-le dans NEO Mobile."
+            )
+        except Exception as exc:
+            QMessageBox.warning(self, "Connexion mobile", f"La passerelle mobile n'est pas disponible : {exc}")
+
     def _build_mini(self):
         mini = QFrame(); mini.setObjectName("MiniRoot")
         layout = QHBoxLayout(mini); layout.setContentsMargins(12, 9, 8, 9); layout.setSpacing(9)
@@ -115,6 +129,7 @@ class NeoMainHud(QMainWindow):
         #Value { color:#e3fbff; font-size:21px; font-weight:700; }
         QPushButton { background:#0c1b23; color:#bfe1e8; border:1px solid #1d4654; border-radius:6px; padding:9px 12px; }
         QPushButton:hover { background:#102a34; border-color:#4ba9bb; }
+        #MobileButton { color:#61e0b4; border-color:#2c6878; padding:7px 10px; }
         QLineEdit { background:#050a0f; color:#dffaff; border:1px solid #1d4654; border-radius:6px; padding:10px; }
         #MiniRoot { background:#0b141b; border:1px solid #2c6878; border-radius:12px; }
         #MiniButton { padding:5px 9px; }
