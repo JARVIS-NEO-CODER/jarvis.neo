@@ -2,7 +2,7 @@
 
 Protocol contract:
 - discovery UDP: 47821
-- WebSocket: /ws on 47822 by default
+- WebSocket: /ws on the discovered PC port (8890 by default)
 - protocol: jarvis-neo/1
 - first WebSocket frame is pair or authenticate
 - pairing uses a 6-digit code with a 5-minute TTL
@@ -24,7 +24,7 @@ from typing import Any, Awaitable, Callable
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 
-DEFAULT_PORT = 47822
+DEFAULT_PORT = 8890
 DISCOVERY_PORT = 47821
 PROTOCOL = "jarvis-neo/1"
 PAIRING_TTL = 300
@@ -197,6 +197,7 @@ class MobileBridge:
         async def websocket_endpoint(websocket: WebSocket):
             await websocket.accept()
             self._loop = asyncio.get_running_loop()
+            device: Device | None = None
             try:
                 first = await asyncio.wait_for(websocket.receive_json(), timeout=10)
                 if str(first.get("protocol", "")) != PROTOCOL:
@@ -232,7 +233,7 @@ class MobileBridge:
 
                 while True:
                     message = await websocket.receive_json()
-                    msg_token = message.get("token") or (device.token if device else None)
+                    msg_token = message.get("token") or device.token
                     msg_device_id = message.get("device_id") or device.device_id
                     if self._authorized(msg_token, msg_device_id) is None:
                         await websocket.send_json({"type": "error", "code": "UNAUTHORIZED"})
@@ -248,7 +249,7 @@ class MobileBridge:
                         action = str(message.get("action", "")).strip()
                         args = message.get("args") if isinstance(message.get("args"), dict) else {}
                         result = await self._handle_action({"token": msg_token, "device_id": msg_device_id, **args}, action)
-                        await websocket.send_json({"type": "response", "request_id": request_id, "ok": not isinstance(result, JSONResponse), "result": result})
+                        await websocket.send_json({"type": "response", "request_id": request_id, "ok": True, "result": result})
                     else:
                         await websocket.send_json({"type": "error", "request_id": request_id, "code": "UNKNOWN_MESSAGE_TYPE"})
             except (WebSocketDisconnect, asyncio.TimeoutError):
