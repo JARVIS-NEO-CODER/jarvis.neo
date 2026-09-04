@@ -34,24 +34,33 @@ def _start_core_workers() -> None:
 
 
 def _upgrade_voice_profile() -> None:
-    """Replace the old default Henri voice with a more natural French profile."""
+    """Migrate the old default voice while preserving explicit user choices."""
     cfg = getattr(assistant, "CONFIG", None)
     if not isinstance(cfg, dict):
         return
 
-    # Keep an explicitly chosen voice untouched. Only migrate the old default.
-    if str(cfg.get("voice", "")).strip() == "fr-FR-HenriNeural":
-        cfg["voice"] = "fr-FR-ClaudeNeural"
+    # Pocket TTS is the primary local voice backend. Keep the old Edge voice
+    # setting only as a fallback identifier and avoid rewriting custom choices.
+    if str(cfg.get("voice", "")).strip() in {"fr-FR-HenriNeural", "fr-FR-ClaudeNeural"}:
+        cfg["voice"] = "pocket-estelle"
         cfg["tts_rate"] = "-5%"
         try:
             assistant.save_config(cfg)
         except Exception:
             pass
-        assistant.VOICE = cfg["voice"]
-        assistant.log.info("VOICE: profil vocal amélioré -> fr-FR-ClaudeNeural (-5%)")
-    else:
-        # Keep the runtime value synchronized with the persisted configuration.
-        assistant.VOICE = str(cfg.get("voice", assistant.VOICE))
+    assistant.VOICE = str(cfg.get("voice", assistant.VOICE))
+
+
+def _install_pocket_tts() -> None:
+    """Install Pocket TTS as the primary voice backend when available."""
+    try:
+        from core.pocket_tts_engine import install
+        install(assistant)
+    except Exception as exc:
+        try:
+            assistant.log.warning(f"Pocket TTS non chargé, moteur vocal précédent conservé : {exc}")
+        except Exception:
+            pass
 
 
 def main() -> None:
@@ -59,6 +68,7 @@ def main() -> None:
     app.setQuitOnLastWindowClosed(False)
     sitecustomize.install_runtime_fixes(assistant)
     _upgrade_voice_profile()
+    _install_pocket_tts()
 
     from ui.neo_main_hud_v2 import NeoMainHud
     hud = NeoMainHud(assistant)
