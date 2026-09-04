@@ -33,10 +33,32 @@ def _start_core_workers() -> None:
                 pass
 
 
+def _upgrade_voice_profile() -> None:
+    """Replace the old default Henri voice with a more natural French profile."""
+    cfg = getattr(assistant, "CONFIG", None)
+    if not isinstance(cfg, dict):
+        return
+
+    # Keep an explicitly chosen voice untouched. Only migrate the old default.
+    if str(cfg.get("voice", "")).strip() == "fr-FR-HenriNeural":
+        cfg["voice"] = "fr-FR-ClaudeNeural"
+        cfg["tts_rate"] = "-5%"
+        try:
+            assistant.save_config(cfg)
+        except Exception:
+            pass
+        assistant.VOICE = cfg["voice"]
+        assistant.log.info("VOICE: profil vocal amélioré -> fr-FR-ClaudeNeural (-5%)")
+    else:
+        # Keep the runtime value synchronized with the persisted configuration.
+        assistant.VOICE = str(cfg.get("voice", assistant.VOICE))
+
+
 def main() -> None:
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
     sitecustomize.install_runtime_fixes(assistant)
+    _upgrade_voice_profile()
 
     from ui.neo_main_hud_v2 import NeoMainHud
     hud = NeoMainHud(assistant)
