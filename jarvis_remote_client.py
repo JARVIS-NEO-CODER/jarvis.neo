@@ -5,7 +5,6 @@ import json
 import os
 import secrets
 import threading
-import time
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -14,6 +13,8 @@ from jarvis_mobile_bridge import PROTOCOL, MobileBridge
 
 REMOTE_STATE_FILE = Path.home() / ".jarvis_neo" / "remote.json"
 RECONNECT_SECONDS = 5
+STATE_INTERVAL = 2.0
+MAX_FRAME_BYTES = 64 * 1024
 
 
 def _load_or_create_identity() -> tuple[str, str]:
@@ -49,7 +50,7 @@ def _relay_ws_url(relay_url: str) -> str:
 
 
 class RemoteTunnelClient:
-    """Keeps an outbound WSS tunnel and terminates the JARVIS protocol on the PC side."""
+    """Outbound WSS tunnel. The PC never accepts Internet connections for Remote Mode."""
 
     def __init__(self, bridge: MobileBridge, relay_url: str, node_id: str | None = None, secret: str | None = None):
         self.bridge = bridge
@@ -59,6 +60,9 @@ class RemoteTunnelClient:
         self.secret = secret or generated_secret
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        self._loop_ref: asyncio.AbstractEventLoop | None = None
+        self._ws: Any = None
+        self._ws_lock = asyncio.Lock()
 
     @property
     def remote_url(self) -> str:
@@ -75,6 +79,18 @@ class RemoteTunnelClient:
     def stop(self) -> None:
         self._stop.set()
 
+    def publish_from_thread(self, event: str, payload: dict[str, Any]) -> None:
+        loop = self._loop_ref
+        ws = self._ws
+        if loop is None or ws is None or loop.is_closed():
+            return
+        asyncio.run_coroutine_threadsafe(self._send_event(ws, event, payload), loop)
+
+    async def _send_event(self, ws: Any, event: str, payload: dict[str, Any]) -> None:
+        async with self._ws_lock:
+            if ws is self._ws:
+                await ws.send(json.dumps({"type": "event", "protocol": PROTOCOL, "event": event, "payload": payload}))
+
     def _run(self) -> None:
         try:
             asyncio.run(self._loop())
@@ -87,6 +103,7 @@ class RemoteTunnelClient:
     async def _loop(self) -> None:
         import websockets
 
+        self._loop_ref = asyncio.get_running_loop()
         while not self._stop.is_set():
             try:
                 async with websockets.connect(
@@ -94,14 +111,10 @@ class RemoteTunnelClient:
                     open_timeout=10,
                     ping_interval=20,
                     ping_timeout=20,
-                    max_size=64 * 1024,
+                    max_size=MAX_FRAME_BYTES,
                 ) as ws:
-                    await ws.send(json.dumps({
-                        "type": "tunnel",
-                        "protocol": PROTOCOL,
-                        "node_id": self.node_id,
-                        "secret": self.secret,
-                    }))
+                    self._ws = ws
+                    await ws.send(json.dumps({"type": "tunnel", "protocol": PROTOCOL, "node_id": self.node_id, "secret": self.secret}))
                     ready = json.loads(await asyncio.wait_for(ws.recv(), 10))
                     if ready.get("type") != "tunnel_ready" or ready.get("protocol") != PROTOCOL:
                         raise RuntimeError("Relais distant refusé")
@@ -109,18 +122,33 @@ class RemoteTunnelClient:
                     await self._serve(ws)
             except Exception as exc:
                 self.bridge.publish_from_thread("remote_disconnected", {"error": str(exc)})
-                await asyncio.sleep(RECONNECT_SECONDS)
+                if not self._stop.is_set():
+                    await asyncio.sleep(RECONNECT_SECONDS)
+            finally:
+                self._ws = None
 
     async def _serve(self, ws: Any) -> None:
-        import websockets
+        reader = asyncio.create_task(self._receive_loop(ws))
+        ticker = asyncio.create_task(self._state_loop(ws))
+        try:
+            await reader
+        finally:
+            ticker.cancel()
+            await asyncio.gather(ticker, return_exceptions=True)
 
+    async def _receive_loop(self, ws: Any) -> None:
         async for raw in ws:
-            if not isinstance(raw, str) or len(raw.encode("utf-8")) > 64 * 1024:
+            if not isinstance(raw, str) or len(raw.encode("utf-8")) > MAX_FRAME_BYTES:
                 raise RuntimeError("REMOTE_FRAME_TOO_LARGE")
             message = json.loads(raw)
             if not isinstance(message, dict):
                 raise RuntimeError("REMOTE_INVALID_FRAME")
             await self._handle(ws, message)
+
+    async def _state_loop(self, ws: Any) -> None:
+        while True:
+            await asyncio.sleep(STATE_INTERVAL)
+            await ws.send(json.dumps({"type": "state", "protocol": PROTOCOL, "state": self.bridge.snapshot()}))
 
     async def _handle(self, ws: Any, message: dict[str, Any]) -> None:
         kind = str(message.get("type", "")).strip().lower()
@@ -129,7 +157,7 @@ class RemoteTunnelClient:
         if kind == "relay_ping":
             await ws.send(json.dumps({"type": "relay_pong", "protocol": PROTOCOL}))
             return
-        if str(message.get("protocol", PROTOCOL)) != PROTOCOL:
+        if str(message.get("protocol", "")) != PROTOCOL:
             await ws.send(json.dumps({"type": "error", "code": "PROTOCOL_MISMATCH"}))
             return
 
