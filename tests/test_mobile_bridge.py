@@ -44,9 +44,10 @@ class MobileBridgeContractTests(unittest.TestCase):
 
     def test_wrong_and_expired_codes(self):
         bridge = self.make_bridge()
+        old_code = bridge.pairing_code
         self.assertIsNone(asyncio.run(bridge._pair_device({"code": "000000", "device_id": "phone-1"})))
         bridge._pairing_expires_at = time.time() - 1
-        self.assertIsNone(asyncio.run(bridge._pair_device({"code": bridge.pairing_code, "device_id": "phone-1"})))
+        self.assertIsNone(asyncio.run(bridge._pair_device({"code": old_code, "device_id": "phone-1"})))
 
     def test_token_is_bound_to_device(self):
         bridge = self.make_bridge()
