@@ -63,6 +63,7 @@ class RemoteTunnelClient:
         self._loop_ref: asyncio.AbstractEventLoop | None = None
         self._ws: Any = None
         self._ws_lock = asyncio.Lock()
+        self._remote_authenticated = False
 
     @property
     def remote_url(self) -> str:
@@ -82,13 +83,13 @@ class RemoteTunnelClient:
     def publish_from_thread(self, event: str, payload: dict[str, Any]) -> None:
         loop = self._loop_ref
         ws = self._ws
-        if loop is None or ws is None or loop.is_closed():
+        if loop is None or ws is None or loop.is_closed() or not self._remote_authenticated:
             return
         asyncio.run_coroutine_threadsafe(self._send_event(ws, event, payload), loop)
 
     async def _send_event(self, ws: Any, event: str, payload: dict[str, Any]) -> None:
         async with self._ws_lock:
-            if ws is self._ws:
+            if ws is self._ws and self._remote_authenticated:
                 await ws.send(json.dumps({"type": "event", "protocol": PROTOCOL, "event": event, "payload": payload}))
 
     def _run(self) -> None:
@@ -105,14 +106,9 @@ class RemoteTunnelClient:
 
         self._loop_ref = asyncio.get_running_loop()
         while not self._stop.is_set():
+            self._remote_authenticated = False
             try:
-                async with websockets.connect(
-                    self.relay_url,
-                    open_timeout=10,
-                    ping_interval=20,
-                    ping_timeout=20,
-                    max_size=MAX_FRAME_BYTES,
-                ) as ws:
+                async with websockets.connect(self.relay_url, open_timeout=10, ping_interval=20, ping_timeout=20, max_size=MAX_FRAME_BYTES) as ws:
                     self._ws = ws
                     await ws.send(json.dumps({"type": "tunnel", "protocol": PROTOCOL, "node_id": self.node_id, "secret": self.secret}))
                     ready = json.loads(await asyncio.wait_for(ws.recv(), 10))
@@ -125,6 +121,7 @@ class RemoteTunnelClient:
                 if not self._stop.is_set():
                     await asyncio.sleep(RECONNECT_SECONDS)
             finally:
+                self._remote_authenticated = False
                 self._ws = None
 
     async def _serve(self, ws: Any) -> None:
@@ -148,7 +145,8 @@ class RemoteTunnelClient:
     async def _state_loop(self, ws: Any) -> None:
         while True:
             await asyncio.sleep(STATE_INTERVAL)
-            await ws.send(json.dumps({"type": "state", "protocol": PROTOCOL, "state": self.bridge.snapshot()}))
+            if self._remote_authenticated:
+                await ws.send(json.dumps({"type": "state", "protocol": PROTOCOL, "state": self.bridge.snapshot()}))
 
     async def _handle(self, ws: Any, message: dict[str, Any]) -> None:
         kind = str(message.get("type", "")).strip().lower()
@@ -169,8 +167,12 @@ class RemoteTunnelClient:
             return
 
         if kind == "authenticate":
+            self._remote_authenticated = True
             await ws.send(json.dumps({"type": "authenticated", "protocol": PROTOCOL, "device_id": device.device_id}))
             await ws.send(json.dumps({"type": "state", "state": self.bridge.snapshot()}))
+            return
+        if not self._remote_authenticated:
+            await ws.send(json.dumps({"type": "error", "code": "AUTHENTICATION_REQUIRED"}))
             return
         request_id = message.get("request_id")
         if kind == "ping":
