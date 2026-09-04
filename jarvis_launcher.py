@@ -4,6 +4,7 @@ from __future__ import annotations
 import sys
 import threading
 
+from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QApplication
 
 import assistant
@@ -36,7 +37,6 @@ def main() -> None:
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
     sitecustomize.install_runtime_fixes(assistant)
-    _start_core_workers()
 
     from ui.neo_main_hud_v2 import NeoMainHud
     hud = NeoMainHud(assistant)
@@ -51,6 +51,11 @@ def main() -> None:
             assistant.speech.say("Centre de commande NEO en ligne.")
         except Exception:
             pass
+
+    # Lancer les services après que Qt ait pris la main : cela évite qu'un
+    # worker vocal/monitoring ne retarde ou ne monopolise l'initialisation du HUD.
+    QTimer.singleShot(0, _start_core_workers)
+
     sys.exit(app.exec())
 
 
