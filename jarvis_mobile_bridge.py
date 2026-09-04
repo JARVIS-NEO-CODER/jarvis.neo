@@ -1,9 +1,9 @@
 """Authenticated PC <-> J.A.R.V.I.S. NEO Mobile bridge.
 
-LAN-first transport used by the React Native client.  The bridge exposes a
+LAN-first transport used by the React Native client. The bridge exposes a
 small REST API for pairing/commands and a WebSocket for live state/events.
 Tokens are persisted locally so an already-authorized phone reconnects after
-a PC restart.  No arbitrary shell execution is exposed.
+a PC restart. No arbitrary shell execution is exposed.
 """
 from __future__ import annotations
 
@@ -23,6 +23,7 @@ from fastapi.responses import JSONResponse
 DEFAULT_PORT = 8890
 DISCOVERY_PORT = 47821
 PROTOCOL = "jarvis-neo/1"
+PAIRING_TTL = 300
 DEVICES_FILE = Path.home() / ".jarvis_neo" / "mobile_devices.json"
 
 ActionHandler = Callable[[str, dict[str, Any]], Awaitable[Any] | Any]
@@ -55,6 +56,7 @@ class MobileBridge:
     state_provider: StateProvider | None = None
     app: FastAPI = field(init=False)
     _pairing_code: str = field(default_factory=_code, init=False)
+    _pairing_expires_at: float = field(default_factory=lambda: time.time() + PAIRING_TTL, init=False)
     _devices: dict[str, dict[str, Any]] = field(default_factory=dict, init=False)
     _sessions: dict[str, MobileSession] = field(default_factory=dict, init=False)
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False)
@@ -70,15 +72,23 @@ class MobileBridge:
     def pairing_code(self) -> str:
         return self._pairing_code
 
+    @property
+    def pairing_expires_at(self) -> float:
+        return self._pairing_expires_at
+
     def rotate_pairing_code(self) -> str:
         self._pairing_code = _code()
+        self._pairing_expires_at = time.time() + PAIRING_TTL
         return self._pairing_code
 
     def _load_devices(self) -> None:
         try:
             data = json.loads(DEVICES_FILE.read_text(encoding="utf-8"))
             if isinstance(data, list):
-                self._devices = {str(d["device_id"]): d for d in data if isinstance(d, dict) and d.get("device_id") and d.get("token")}
+                self._devices = {
+                    str(d["device_id"]): d for d in data
+                    if isinstance(d, dict) and d.get("device_id") and d.get("token")
+                }
         except Exception:
             self._devices = {}
 
@@ -116,14 +126,10 @@ class MobileBridge:
         return None
 
     def _routes(self) -> None:
-        @self.app.get("/api/pair-code")
-        async def pair_code() -> dict[str, Any]:
-            return {"code": self._pairing_code, "expires_in": 300}
-
         @self.app.post("/api/pair")
         async def pair(payload: dict[str, Any]) -> dict[str, Any]:
             code = str(payload.get("code", ""))
-            if not secrets.compare_digest(code, self._pairing_code):
+            if time.time() >= self._pairing_expires_at or not secrets.compare_digest(code, self._pairing_code):
                 return JSONResponse(status_code=401, content={"error": "PAIRING_FAILED"})
             device_id = str(payload.get("device_id") or secrets.token_hex(8))
             token = _token()
@@ -138,14 +144,20 @@ class MobileBridge:
             return {"device_id": device_id, "token": token, "protocol": PROTOCOL, "server": self.device_name}
 
         @self.app.get("/api/system")
-        async def system() -> dict[str, Any]:
+        async def system(token: str = "") -> dict[str, Any]:
+            if not self._authorized(token):
+                return JSONResponse(status_code=401, content={"error": "TOKEN_INVALID"})
             return self.snapshot()
 
         @self.app.get("/api/devices")
         async def devices(token: str = "") -> dict[str, Any]:
             if not self._authorized(token):
                 return JSONResponse(status_code=401, content={"error": "TOKEN_INVALID"})
-            return {"devices": [{"device_id": d["device_id"], "name": d.get("name", "Appareil"), "connected": any(s.device_id == d["device_id"] for s in self._sessions.values())} for d in self._devices.values()]}
+            return {"devices": [
+                {"device_id": d["device_id"], "name": d.get("name", "Appareil"),
+                 "connected": any(s.device_id == d["device_id"] for s in self._sessions.values())}
+                for d in self._devices.values()
+            ]}
 
         @self.app.post("/api/command")
         async def command(payload: dict[str, Any]) -> dict[str, Any]:
@@ -155,8 +167,11 @@ class MobileBridge:
             text = str(payload.get("command", "")).strip()
             if not text:
                 return {"ok": False, "error": "EMPTY_COMMAND"}
-            confirmed = bool(payload.get("confirmed", False))
-            result = await self._execute("command", {"command": text, "confirmed": confirmed, "device_id": device["device_id"]})
+            result = await self._execute("command", {
+                "command": text,
+                "confirmed": bool(payload.get("confirmed", False)),
+                "device_id": device["device_id"],
+            })
             return {"ok": True, "result": result}
 
         @self.app.post("/api/agent")
@@ -166,7 +181,10 @@ class MobileBridge:
             instruction = str(payload.get("instruction", "")).strip()
             if not instruction:
                 return {"ok": False, "error": "EMPTY_INSTRUCTION"}
-            result = await self._execute("agent", {"instruction": instruction, "confirmed": bool(payload.get("confirmed", False))})
+            result = await self._execute("agent", {
+                "instruction": instruction,
+                "confirmed": bool(payload.get("confirmed", False)),
+            })
             return {"ok": True, "result": result}
 
         @self.app.post("/api/agent/stop")
@@ -180,7 +198,7 @@ class MobileBridge:
         async def events(token: str = "", limit: int = 40) -> dict[str, Any]:
             if not self._authorized(token):
                 return JSONResponse(status_code=401, content={"error": "TOKEN_INVALID"})
-            return {"events": self._events[-max(1, min(limit, 100)):]}
+            return {"events": self._events[-max(1, min(limit, 100)):]} 
 
         @self.app.websocket("/ws")
         async def websocket(ws: WebSocket) -> None:
@@ -208,8 +226,13 @@ class MobileBridge:
                     elif kind in {"status", "sync"}:
                         await ws.send_json({"type": "status", "id": request_id, "payload": self.snapshot()})
                     elif kind in {"command", "action"}:
-                        text = str(msg.get("command") or msg.get("args", {}).get("command", "")).strip()
-                        result = await self._execute("command", {"command": text, "confirmed": bool(msg.get("confirmed", False)), "device_id": device["device_id"]})
+                        args = msg.get("args") if isinstance(msg.get("args"), dict) else {}
+                        text = str(msg.get("command") or args.get("command", "")).strip()
+                        result = await self._execute("command", {
+                            "command": text,
+                            "confirmed": bool(msg.get("confirmed", False)),
+                            "device_id": device["device_id"],
+                        })
                         await ws.send_json({"type": "response", "id": request_id, "ok": True, "result": result})
                     else:
                         await ws.send_json({"type": "error", "id": request_id, "code": "UNKNOWN_MESSAGE"})
