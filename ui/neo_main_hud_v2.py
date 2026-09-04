@@ -108,11 +108,51 @@ class NeoMainHud(QMainWindow):
 
     def _build_mini(self):
         mini = QFrame(); mini.setObjectName("MiniRoot")
-        layout = QHBoxLayout(mini); layout.setContentsMargins(12, 9, 8, 9); layout.setSpacing(9)
-        self.mini_status = QLabel("● NEO  ONLINE"); self.mini_status.setObjectName("MiniStatus")
-        self.mini_clock = QLabel("--:--:--"); self.mini_clock.setObjectName("MiniClock")
-        restore = QPushButton("OUVRIR"); restore.setObjectName("MiniButton"); restore.clicked.connect(self.restore_hud)
-        layout.addWidget(self.mini_status); layout.addWidget(self.mini_clock); layout.addWidget(restore)
+        layout = QHBoxLayout(mini)
+        layout.setContentsMargins(13, 10, 10, 10)
+        layout.setSpacing(10)
+
+        orb = QLabel("●")
+        orb.setObjectName("MiniOrb")
+        orb.setFixedWidth(20)
+        orb.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        identity = QVBoxLayout()
+        identity.setSpacing(1)
+        name = QLabel("J.A.R.V.I.S. NEO")
+        name.setObjectName("MiniName")
+        self.mini_status = QLabel("SYSTÈME EN LIGNE")
+        self.mini_status.setObjectName("MiniStatus")
+        identity.addWidget(name)
+        identity.addWidget(self.mini_status)
+
+        metrics = QVBoxLayout()
+        metrics.setSpacing(1)
+        self.mini_metrics = QLabel("CPU --  •  RAM --")
+        self.mini_metrics.setObjectName("MiniMetrics")
+        self.mini_context = QLabel("IA --  •  MICRO ON")
+        self.mini_context.setObjectName("MiniContext")
+        metrics.addWidget(self.mini_metrics)
+        metrics.addWidget(self.mini_context)
+
+        self.mini_clock = QLabel("--:--:--")
+        self.mini_clock.setObjectName("MiniClock")
+        self.mini_clock.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.mini_clock.setMinimumWidth(72)
+
+        restore = QPushButton("⌃")
+        restore.setObjectName("MiniButton")
+        restore.setToolTip("Ouvrir le Command Center")
+        restore.clicked.connect(self.restore_hud)
+        restore.setFixedSize(34, 34)
+
+        layout.addWidget(orb)
+        layout.addLayout(identity)
+        layout.addSpacing(8)
+        layout.addLayout(metrics, 1)
+        layout.addWidget(self.mini_clock)
+        layout.addWidget(restore)
+
         self._mini_root = mini
         mini.hide()
 
@@ -124,15 +164,21 @@ class NeoMainHud(QMainWindow):
         #Subtitle { color:#5f929f; font-size:10px; letter-spacing:2px; margin-left:10px; }
         #Online, #MiniStatus { color:#61e0b4; font-weight:700; }
         #HeroTitle { color:#78eaf5; font-size:27px; font-weight:700; }
-        #HeroDetail, #Detail, #Activity, #MiniClock { color:#86aeb8; }
+        #HeroDetail, #Detail, #Activity, #MiniMetrics, #MiniContext { color:#86aeb8; }
         #Caption { color:#5f8b96; font-size:10px; font-weight:700; }
         #Value { color:#e3fbff; font-size:21px; font-weight:700; }
         QPushButton { background:#0c1b23; color:#bfe1e8; border:1px solid #1d4654; border-radius:6px; padding:9px 12px; }
         QPushButton:hover { background:#102a34; border-color:#4ba9bb; }
         #MobileButton { color:#61e0b4; border-color:#2c6878; padding:7px 10px; }
         QLineEdit { background:#050a0f; color:#dffaff; border:1px solid #1d4654; border-radius:6px; padding:10px; }
-        #MiniRoot { background:#0b141b; border:1px solid #2c6878; border-radius:12px; }
-        #MiniButton { padding:5px 9px; }
+        #MiniRoot { background:#081117; border:1px solid #245363; border-radius:14px; }
+        #MiniOrb { color:#61e0b4; font-size:19px; }
+        #MiniName { color:#e5fbff; font-size:12px; font-weight:700; }
+        #MiniStatus { font-size:9px; letter-spacing:1px; }
+        #MiniMetrics, #MiniContext { font-size:9px; }
+        #MiniClock { color:#dffaff; font-size:12px; font-weight:700; }
+        #MiniButton { background:#0d2029; color:#78eaf5; border:1px solid #285968; border-radius:8px; padding:0; font-size:16px; }
+        #MiniButton:hover { background:#12303a; border-color:#61d9e7; }
         """)
 
     def _setup_tray(self):
@@ -183,7 +229,7 @@ class NeoMainHud(QMainWindow):
         self.setCentralWidget(self._mini_root)
         self._mini_root.show()
         self.setWindowFlags(Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
-        self.resize(330, 62)
+        self.resize(470, 74)
         self.setMinimumSize(0, 0)
         self.setMaximumSize(16777215, 16777215)
         self.show(); self._place_mini(); self.raise_()
@@ -229,19 +275,27 @@ class NeoMainHud(QMainWindow):
         return default
 
     def _refresh(self):
-        self.clock.setText(time.strftime("%H:%M:%S"))
-        self.cards["cpu"].setText(self._fmt(self._get("cpu_percent", default="--"), "%"))
-        self.cards["ram"].setText(self._fmt(self._get("ram_percent", default="--"), "%"))
-        self.cards["temp"].setText(self._fmt(self._get("cpu_temp", default="--"), "°C"))
+        now = time.strftime("%H:%M:%S")
+        self.clock.setText(now)
+        self.mini_clock.setText(now)
+        cpu = self._fmt(self._get("cpu_percent", default="--"), "%")
+        ram = self._fmt(self._get("ram_percent", default="--"), "%")
+        temp = self._fmt(self._get("cpu_temp", default="--"), "°C")
+        self.cards["cpu"].setText(cpu)
+        self.cards["ram"].setText(ram)
+        self.cards["temp"].setText(temp)
         provider = self._get("CONFIG.ai_provider", "ai_provider", default="Ollama")
         model = self._get("CONFIG.groq_model", "ai_model", "MODEL", default="--")
+        mic_on = bool(self._get("state.mic_enabled", default=True))
+        voice_on = bool(self._get("state.voice_enabled", default=True))
         self.cards["ai"].setText(str(provider))
-        self.cards["mic"].setText("ON" if bool(self._get("state.mic_enabled", default=True)) else "OFF")
-        self.cards["voice"].setText("ON" if bool(self._get("state.voice_enabled", default=True)) else "OFF")
+        self.cards["mic"].setText("ON" if mic_on else "OFF")
+        self.cards["voice"].setText("ON" if voice_on else "OFF")
         self.ai_detail.setText(f"Provider : {provider}\nModèle : {model}")
-        self.hero_detail.setText(f"{platform.system()}  •  IA {provider}  •  Micro {'actif' if self.cards['mic'].text() == 'ON' else 'désactivé'}")
-        if self._compact:
-            self.mini_clock.setText(time.strftime("%H:%M:%S"))
+        self.hero_detail.setText(f"{platform.system()}  •  IA {provider}  •  Micro {'actif' if mic_on else 'désactivé'}")
+        self.mini_status.setText("SYSTÈME EN LIGNE" if not bool(self._get("state.abort_requested", default=False)) else "ARRÊT DEMANDÉ")
+        self.mini_metrics.setText(f"CPU {cpu}  •  RAM {ram}")
+        self.mini_context.setText(f"IA {provider}  •  MICRO {'ON' if mic_on else 'OFF'}")
 
     @staticmethod
     def _fmt(value, suffix):
