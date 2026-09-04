@@ -19,6 +19,7 @@ class NeoMainHud(QMainWindow):
         super().__init__()
         self.assistant = assistant
         self._compact = False
+        self._quitting = False
         self._main_root = None
         self._mini_root = None
         self.setWindowTitle("J.A.R.V.I.S. NEO | Command Center")
@@ -190,7 +191,7 @@ class NeoMainHud(QMainWindow):
         menu = QMenu()
         show = QAction("Afficher le HUD", self); show.triggered.connect(self.restore_hud)
         compact = QAction("Réduire le HUD", self); compact.triggered.connect(self.minimize_hud)
-        quit_action = QAction("Quitter JARVIS NEO", self); quit_action.triggered.connect(QApplication.instance().quit)
+        quit_action = QAction("Quitter JARVIS NEO", self); quit_action.triggered.connect(self._quit_application)
         menu.addAction(show); menu.addAction(compact); menu.addSeparator(); menu.addAction(quit_action)
         self.tray.setContextMenu(menu); self.tray.setToolTip("J.A.R.V.I.S. NEO")
         self.tray.activated.connect(lambda reason: self.restore_hud() if reason == QSystemTrayIcon.ActivationReason.DoubleClick else None)
@@ -248,6 +249,12 @@ class NeoMainHud(QMainWindow):
     def toggle_hud(self):
         self.restore_hud() if self._compact else self.minimize_hud()
 
+    def _quit_application(self):
+        self._quitting = True
+        if getattr(self, "tray", None) is not None:
+            self.tray.hide()
+        QApplication.instance().quit()
+
     def _send_command(self, command):
         self.activity.setText(f"> {command}")
         try: self.assistant.command_queue.put(command)
@@ -303,5 +310,10 @@ class NeoMainHud(QMainWindow):
         except Exception: return str(value)
 
     def closeEvent(self, event):
+        if self._quitting:
+            if getattr(self, "tray", None) is not None:
+                self.tray.hide()
+            event.accept()
+            return
         event.ignore()
         self.minimize_hud()
