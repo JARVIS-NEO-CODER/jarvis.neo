@@ -25,7 +25,7 @@ class MobileBridgeContractTests(unittest.TestCase):
         self.assertIn("/api/revoke", paths)
         self.assertIn("/api/events", paths)
         self.assertIn("/ws", paths)
-        self.assertEqual(bridge.port, 47822)
+        self.assertEqual(bridge.port, 8890)
         self.assertEqual(bridge.discovery_port, 47821)
         self.assertEqual(bridge.snapshot()["protocol"], mobile.PROTOCOL)
         self.assertGreater(bridge.pairing_expires_at, time.time())
