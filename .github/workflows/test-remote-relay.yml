@@ -1,0 +1,21 @@
+name: Test JARVIS NEO Remote Relay
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  relay:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --upgrade pip
+      - run: pip install -r remote_relay/requirements.txt websockets>=14,<17
+      - run: python -m unittest tests/test_remote_relay.py -v
+      - run: python -m compileall -q jarvis_remote_client.py remote_relay/server.py jarvis_mobile_bridge.py
