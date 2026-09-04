@@ -4,9 +4,9 @@ Protocol contract:
 - discovery UDP: 47821
 - WebSocket: /ws
 - protocol: jarvis-neo/1
-- pairing happens as the first WebSocket message with the 6-digit code
+- first connection uses a 6-digit pairing code
+- subsequent connections authenticate with the persisted device token
 - successful pairing returns a per-device bearer token
-- every subsequent message must contain that token
 - no arbitrary shell execution is exposed
 """
 from __future__ import annotations
@@ -117,18 +117,16 @@ class MobileBridge:
                 result.update(self.state_provider())
             except Exception:
                 result["state_provider_error"] = True
-        result.update({
-            "protocol": PROTOCOL,
-            "device": self.device_name,
-            "connected_devices": len(self._sessions),
-            "authorized_devices": len(self._devices),
-            "ts": time.time(),
-        })
+        result.update({"protocol": PROTOCOL, "device": self.device_name,
+                       "connected_devices": len(self._sessions),
+                       "authorized_devices": len(self._devices), "ts": time.time()})
         return result
 
-    def _authorized(self, token: str) -> dict[str, Any] | None:
+    def _authorized(self, token: str, device_id: str | None = None) -> dict[str, Any] | None:
         token = str(token or "")
         for device in self._devices.values():
+            if device_id and str(device.get("device_id")) != device_id:
+                continue
             if secrets.compare_digest(str(device.get("token", "")), token):
                 return device
         return None
@@ -163,15 +161,13 @@ class MobileBridge:
             return None
         device_id = str(payload.get("device_id") or secrets.token_hex(8))
         token = _token()
-        self._devices[device_id] = {
-            "device_id": device_id,
-            "token": token,
-            "name": str(payload.get("name") or "Appareil mobile"),
-            "created_at": time.time(),
-        }
+        self._devices[device_id] = {"device_id": device_id, "token": token,
+                                    "name": str(payload.get("name") or "Appareil mobile"),
+                                    "created_at": time.time()}
         self._save_devices()
         self.rotate_pairing_code()
-        return {"device_id": device_id, "token": token, "protocol": PROTOCOL, "server": self.device_name}
+        return {"device_id": device_id, "token": token, "protocol": PROTOCOL,
+                "server": self.device_name}
 
     def _routes(self) -> None:
         @self.app.get("/api/system")
@@ -184,11 +180,9 @@ class MobileBridge:
         async def devices(token: str = "") -> dict[str, Any]:
             if not self._authorized(token):
                 return JSONResponse(status_code=401, content={"error": "TOKEN_INVALID"})
-            return {"devices": [
-                {"device_id": d["device_id"], "name": d.get("name", "Appareil"),
-                 "connected": any(s.device_id == d["device_id"] for s in self._sessions.values())}
-                for d in self._devices.values()
-            ]}
+            return {"devices": [{"device_id": d["device_id"], "name": d.get("name", "Appareil"),
+                                 "connected": any(s.device_id == d["device_id"] for s in self._sessions.values())}
+                                for d in self._devices.values()]}
 
         @self.app.post("/api/revoke")
         async def revoke(payload: dict[str, Any]) -> dict[str, Any]:
@@ -215,25 +209,49 @@ class MobileBridge:
             session: MobileSession | None = None
             try:
                 first = await asyncio.wait_for(ws.receive_json(), timeout=10)
-                if first.get("type") != "pair":
-                    await ws.send_json({"type": "error", "code": "PAIRING_REQUIRED"})
+                protocol = str(first.get("protocol", ""))
+                if protocol != PROTOCOL:
+                    await ws.send_json({"type": "error", "code": "PROTOCOL_MISMATCH", "protocol": PROTOCOL})
+                    await ws.close(code=1002)
+                    return
+
+                if first.get("type") == "pair":
+                    paired = await self._pair_device(first)
+                    if not paired:
+                        await ws.send_json({"type": "error", "code": "PAIRING_FAILED"})
+                        await ws.close(code=1008)
+                        return
+                    token = paired["token"]
+                    device_id = paired["device_id"]
+                    await ws.send_json({"type": "paired", **paired})
+                elif first.get("type") == "authenticate":
+                    device_id = str(first.get("device_id", ""))
+                    token = str(first.get("token", ""))
+                    if not self._authorized(token, device_id):
+                        await ws.send_json({"type": "error", "code": "TOKEN_INVALID"})
+                        await ws.close(code=1008)
+                        return
+                    await ws.send_json({"type": "authenticated", "protocol": PROTOCOL, "device_id": device_id})
+                else:
+                    await ws.send_json({"type": "error", "code": "AUTHENTICATION_REQUIRED"})
                     await ws.close(code=1008)
                     return
-                paired = await self._pair_device(first)
-                if not paired:
-                    await ws.send_json({"type": "error", "code": "PAIRING_FAILED"})
-                    await ws.close(code=1008)
-                    return
-                session = MobileSession(device_id=paired["device_id"], token=paired["token"], websocket=ws)
+
+                session = MobileSession(device_id=device_id, token=token, websocket=ws)
                 async with self._lock:
-                    self._sessions[session.token] = session
-                await ws.send_json({"type": "paired", **paired})
+                    old = self._sessions.get(token)
+                    self._sessions[token] = session
+                if old:
+                    try:
+                        await old.websocket.close(code=1000)
+                    except Exception:
+                        pass
                 await ws.send_json({"type": "status", "payload": self.snapshot()})
 
                 while True:
                     msg = await ws.receive_json()
-                    token = str(msg.get("token", ""))
-                    if not secrets.compare_digest(token, session.token) or not self._authorized(token):
+                    msg_token = str(msg.get("token", ""))
+                    if not secrets.compare_digest(msg_token, session.token) or not self._authorized(msg_token, session.device_id):
                         await ws.send_json({"type": "error", "code": "TOKEN_INVALID"})
                         await ws.close(code=1008)
                         return
@@ -246,11 +264,8 @@ class MobileBridge:
                     elif kind in {"command", "action"}:
                         args = msg.get("args") if isinstance(msg.get("args"), dict) else {}
                         result = await self._execute(str(msg.get("action") or "command"), {
-                            **args,
-                            "command": str(msg.get("command") or args.get("command", "")).strip(),
-                            "confirmed": bool(msg.get("confirmed", False)),
-                            "device_id": session.device_id,
-                        })
+                            **args, "command": str(msg.get("command") or args.get("command", "")).strip(),
+                            "confirmed": bool(msg.get("confirmed", False)), "device_id": session.device_id})
                         await ws.send_json({"type": "response", "request_id": request_id, "ok": True, "result": result})
                     else:
                         await ws.send_json({"type": "error", "request_id": request_id, "code": "UNKNOWN_MESSAGE"})
@@ -259,7 +274,8 @@ class MobileBridge:
             finally:
                 if session:
                     async with self._lock:
-                        self._sessions.pop(session.token, None)
+                        if self._sessions.get(session.token) is session:
+                            self._sessions.pop(session.token, None)
 
     async def _execute(self, action: str, args: dict[str, Any]) -> Any:
         if self.action_handler is None:
@@ -290,11 +306,9 @@ class MobileBridge:
                 pass
 
     def discovery_payload(self) -> bytes:
-        return json.dumps({
-            "type": "jarvis_discovery", "protocol": PROTOCOL,
-            "device": self.device_name, "port": self.port,
-            "hostname": socket.gethostname(),
-        }).encode()
+        return json.dumps({"type": "jarvis_discovery", "protocol": PROTOCOL,
+                           "device": self.device_name, "port": self.port,
+                           "hostname": socket.gethostname()}).encode()
 
     def start_discovery(self) -> threading.Thread:
         def worker() -> None:
