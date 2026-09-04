@@ -1,6 +1,7 @@
 """Stable entry point for the focused J.A.R.V.I.S. NEO command center."""
 from __future__ import annotations
 
+import os
 import sys
 import threading
 import time
@@ -166,6 +167,20 @@ def _start_mobile_bridge() -> None:
             name="NEO-mobile-bridge",
         ).start()
         assistant.log.info(f"MOBILE: passerelle active sur le port {bridge.port} | code: {bridge.pairing_code}")
+
+        relay_url = str(os.getenv("JARVIS_REMOTE_RELAY_URL", "")).strip()
+        if relay_url:
+            try:
+                from jarvis_remote_client import RemoteTunnelClient
+                remote = RemoteTunnelClient(bridge, relay_url)
+                remote.start()
+                assistant.log.info(
+                    f"REMOTE: tunnel sortant actif | node_id={remote.node_id} | relais={remote.remote_url}"
+                )
+            except Exception as exc:
+                assistant.log.warning(f"REMOTE: tunnel non démarré : {exc}")
+        else:
+            assistant.log.info("REMOTE: désactivé (JARVIS_REMOTE_RELAY_URL non configurée)")
     except Exception as exc:
         try:
             assistant.log.warning(f"MOBILE: passerelle non démarrée : {exc}")
