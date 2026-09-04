@@ -26,15 +26,22 @@ class AIProviderRouter:
 
     @staticmethod
     def is_fallback_error(exc: Exception) -> bool:
+        """Return True only for availability/quota failures, not bad credentials."""
         text = str(exc).lower()
         return any(x in text for x in (
-            "http 401", "http 403", "http 404", "http 429", "status code: 429",
-            "quota", "rate limit", "too many requests", "model unavailable",
-            "modèle groq indisponible", "no other", "http 500", "http 502", "http 503",
-            "http 504", "service unavailable", "temporarily unavailable", "timeout",
-            "timed out", "connection reset", "connection refused", "name or service not known",
-            "groq inaccessible",
+            "http 429", "status code: 429", "quota", "rate limit", "too many requests",
+            "model unavailable", "modèle groq indisponible", "no other",
+            "http 500", "http 502", "http 503", "http 504", "service unavailable",
+            "temporarily unavailable", "timeout", "timed out", "connection reset",
+            "connection refused", "name or service not known", "groq inaccessible",
         ))
+
+    @staticmethod
+    def fallback_reason(exc: Exception) -> str:
+        text = str(exc).lower()
+        if any(x in text for x in ("http 429", "status code: 429", "quota", "rate limit", "too many requests")):
+            return "quota_or_temporary_error"
+        return "groq_unavailable"
 
     def _fallback_provider(self):
         if self.quota_fallback_mode == "simple":
@@ -73,7 +80,7 @@ class AIProviderRouter:
                     self.last_provider = fallback_name
                     self.last_latency_ms = round((time.perf_counter() - fallback_started) * 1000, 1)
                     self.last_error = None
-                    self.last_fallback_reason = "groq_unavailable"
+                    self.last_fallback_reason = self.fallback_reason(exc)
                     return result
                 except Exception as fallback_exc:
                     errors.append(f"{fallback_name}: {fallback_exc}")
