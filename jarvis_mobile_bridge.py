@@ -24,6 +24,7 @@ DEFAULT_PORT = 8890
 DISCOVERY_PORT = 47821
 PROTOCOL = "jarvis-neo/1"
 PAIRING_TTL = 300
+STATE_BROADCAST_INTERVAL = 2.0
 DEVICES_FILE = Path.home() / ".jarvis_neo" / "mobile_devices.json"
 
 ActionHandler = Callable[[str, dict[str, Any]], Awaitable[Any] | Any]
@@ -62,11 +63,14 @@ class MobileBridge:
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False)
     _state: dict[str, Any] = field(default_factory=dict, init=False)
     _events: list[dict[str, Any]] = field(default_factory=list, init=False)
+    _state_task: asyncio.Task | None = field(default=None, init=False)
 
     def __post_init__(self) -> None:
         self._load_devices()
         self.app = FastAPI(title="JARVIS NEO Mobile Bridge", version=PROTOCOL)
         self._routes()
+        self.app.add_event_handler("startup", self._startup)
+        self.app.add_event_handler("shutdown", self._shutdown)
 
     @property
     def pairing_code(self) -> str:
@@ -124,6 +128,24 @@ class MobileBridge:
             if secrets.compare_digest(str(device.get("token", "")), token):
                 return device
         return None
+
+    async def _startup(self) -> None:
+        self._state_task = asyncio.create_task(self._state_broadcast_loop())
+
+    async def _shutdown(self) -> None:
+        if self._state_task:
+            self._state_task.cancel()
+            try:
+                await self._state_task
+            except asyncio.CancelledError:
+                pass
+            self._state_task = None
+
+    async def _state_broadcast_loop(self) -> None:
+        while True:
+            await asyncio.sleep(STATE_BROADCAST_INTERVAL)
+            if self._sessions:
+                await self.broadcast_state()
 
     def _routes(self) -> None:
         @self.app.post("/api/pair")
