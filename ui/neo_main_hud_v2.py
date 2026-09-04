@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QAction, QBrush, QColor, QKeySequence, QPainter, QPixmap, QShortcut
+from PyQt6.QtGui import QAction, QBrush, QColor, QIcon, QKeySequence, QPainter, QPixmap, QShortcut
 from PyQt6.QtWidgets import QApplication, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox, QPushButton, QSystemTrayIcon, QVBoxLayout, QWidget, QMenu
 
 CONFIG_FILE = Path.home() / ".jarvis_neo" / "jarvis_config.json"
@@ -141,7 +141,7 @@ class NeoMainHud(QMainWindow):
         painter = QPainter(pixmap); painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setBrush(QBrush(QColor("#61e0b4"))); painter.setPen(Qt.PenStyle.NoPen); painter.drawEllipse(5, 5, 22, 22)
         painter.setBrush(QBrush(QColor("#071016"))); painter.drawEllipse(11, 11, 10, 10); painter.end()
-        return pixmap
+        return QIcon(pixmap)
 
     def _config(self):
         try:
