@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import secrets
 from dataclasses import dataclass
 from time import monotonic
@@ -33,9 +32,7 @@ lock = asyncio.Lock()
 
 def _valid_node(node_id: object) -> str | None:
     value = str(node_id or "").strip()
-    if not value or len(value) > MAX_NODE_ID:
-        return None
-    return value
+    return value if value and len(value) <= MAX_NODE_ID else None
 
 
 def _valid_secret(value: object) -> str | None:
@@ -67,12 +64,29 @@ async def _forward(source: WebSocket, target: WebSocket, tunnel: Tunnel) -> None
         await target.send_text(raw)
 
 
+async def _relay_pair(tunnel: Tunnel, remote: WebSocket) -> None:
+    tasks = [
+        asyncio.create_task(_forward(remote, tunnel.websocket, tunnel)),
+        asyncio.create_task(_forward(tunnel.websocket, remote, tunnel)),
+    ]
+    try:
+        done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)
+        for task in done:
+            task.result()
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+    finally:
+        tunnel.remote = None
+
+
 @app.websocket("/ws")
 async def websocket_relay(ws: WebSocket) -> None:
     await ws.accept()
     tunnel: Tunnel | None = None
     node_id: str | None = None
-    role: str | None = None
+    role = ""
     try:
         hello = await _recv_json(ws)
         if hello.get("protocol") != PROTOCOL:
@@ -80,6 +94,7 @@ async def websocket_relay(ws: WebSocket) -> None:
             return
         role = str(hello.get("type", "")).strip().lower()
         node_id = _valid_node(hello.get("node_id"))
+
         if role == "tunnel":
             secret = _valid_secret(hello.get("secret"))
             if not node_id or not secret:
@@ -88,7 +103,7 @@ async def websocket_relay(ws: WebSocket) -> None:
                 return
             async with lock:
                 old = tunnels.pop(node_id, None)
-                if old is not None:
+                if old:
                     try:
                         await old.websocket.close(code=1012, reason="REPLACED")
                     except Exception:
@@ -102,22 +117,25 @@ async def websocket_relay(ws: WebSocket) -> None:
                     raise TimeoutError("IDLE_TIMEOUT")
                 if tunnel.remote is not None:
                     try:
-                        await tunnel.remote.send_json({"type": "relay_ping"})
+                        await tunnel.remote.send_json({"type": "relay_ping", "protocol": PROTOCOL})
                     except Exception:
                         tunnel.remote = None
+
         elif role == "remote":
             if not node_id:
                 await ws.close(code=1008, reason="INVALID_NODE_ID")
                 return
             async with lock:
                 tunnel = tunnels.get(node_id)
-                if tunnel is None or not secrets.compare_digest(tunnel.secret, str(hello.get("secret", ""))):
-                    # A remote secret is optional at protocol level; if supplied it must match.
-                    # Normal clients leave it empty and rely on the PC-side mobile token auth.
-                    if tunnel is None:
-                        await ws.send_json({"type": "error", "code": "PC_OFFLINE"})
-                        await ws.close(code=1013)
-                        return
+                if tunnel is None:
+                    await ws.send_json({"type": "error", "code": "PC_OFFLINE"})
+                    await ws.close(code=1013)
+                    return
+                optional_secret = str(hello.get("secret", "")).strip()
+                if optional_secret and not secrets.compare_digest(tunnel.secret, optional_secret):
+                    await ws.send_json({"type": "error", "code": "REMOTE_SECRET_INVALID"})
+                    await ws.close(code=1008)
+                    return
                 if tunnel.remote is not None:
                     await ws.send_json({"type": "error", "code": "REMOTE_BUSY"})
                     await ws.close(code=1013)
@@ -126,7 +144,7 @@ async def websocket_relay(ws: WebSocket) -> None:
                 tunnel.last_seen = monotonic()
             await ws.send_json({"type": "remote_attached", "protocol": PROTOCOL, "node_id": node_id})
             await tunnel.websocket.send_json({"type": "remote_attached", "protocol": PROTOCOL, "node_id": node_id})
-            await _forward(ws, tunnel.websocket, tunnel)
+            await _relay_pair(tunnel, ws)
         else:
             await ws.close(code=1008, reason="INVALID_ROLE")
     except (WebSocketDisconnect, asyncio.TimeoutError, TimeoutError, ValueError, json.JSONDecodeError):
@@ -145,6 +163,6 @@ async def websocket_relay(ws: WebSocket) -> None:
                 elif role == "remote" and current is tunnel and tunnel.remote is ws:
                     tunnel.remote = None
                     try:
-                        await tunnel.websocket.send_json({"type": "remote_detached"})
+                        await tunnel.websocket.send_json({"type": "remote_detached", "protocol": PROTOCOL})
                     except Exception:
                         pass
