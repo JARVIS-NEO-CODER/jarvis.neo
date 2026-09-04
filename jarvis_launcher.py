@@ -1,8 +1,9 @@
 """Stable entry point for the focused J.A.R.V.I.S. NEO command center."""
 from __future__ import annotations
 
-import threading
 import sys
+import threading
+import time
 
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QApplication
@@ -66,43 +67,31 @@ def _start_mobile_bridge() -> None:
         import uvicorn
         from jarvis_mobile_bridge import bridge
 
-        SAFE_COMMAND_ACTIONS = {
+        safe_actions = {
             "command", "agent", "agent.stop", "pc.volume", "pc.media", "pc.app.open",
             "pc.browser.open", "jarvis.mode.set", "pc.performance", "sync.request",
         }
-        CONFIRMATION_REQUIRED = {
+        confirmation_required = {
             "pc.system.shutdown", "pc.system.restart", "pc.input.keyboard",
             "pc.input.mouse", "pc.file.delete", "pc.remote.session",
         }
 
         def action_handler(action: str, args: dict):
             action = str(action).strip()
-            if action in CONFIRMATION_REQUIRED:
-                return {
-                    "accepted": False,
-                    "requires_confirmation": True,
-                    "reason": "HIGH_RISK_ACTION_REQUIRES_LOCAL_CONFIRMATION",
-                }
-            if action not in SAFE_COMMAND_ACTIONS:
+            if action in confirmation_required:
+                return {"accepted": False, "requires_confirmation": True, "reason": "HIGH_RISK_ACTION_REQUIRES_LOCAL_CONFIRMATION"}
+            if action not in safe_actions:
                 return {"accepted": False, "reason": "ACTION_NOT_ALLOWLISTED"}
-
             if action == "sync.request":
-                return {"accepted": True, "sync": "state", "note": "État courant fourni par state_provider."}
-
+                return {"accepted": True, "sync": "state"}
             if action == "pc.performance":
                 try:
                     return {"accepted": True, "performance": assistant.collect_system_metrics()}
                 except Exception as exc:
                     return {"accepted": False, "error": str(exc)}
-
             if action == "jarvis.mode.set":
-                mode = str(args.get("mode", "normal")).strip()
-                command = {
-                    "normal": "mode normal",
-                    "conversation": "mode conversation",
-                    "agent": "mode agent",
-                    "sentinel": "active le mode sentinelle",
-                }.get(mode)
+                mode = str(args.get("mode", "normal")).strip().lower()
+                command = {"normal": "mode normal", "conversation": "mode conversation", "agent": "mode agent", "sentinel": "active le mode sentinelle"}.get(mode)
                 if command is None:
                     return {"accepted": False, "reason": "MODE_NOT_ALLOWED"}
             elif action == "pc.volume":
@@ -114,16 +103,10 @@ def _start_mobile_bridge() -> None:
                 command_name = str(args.get("command", "")).strip().lower()
                 if command_name not in {"play_pause", "next", "previous", "stop"}:
                     return {"accepted": False, "reason": "MEDIA_COMMAND_NOT_ALLOWED"}
-                command = {
-                    "play_pause": "pause la musique",
-                    "next": "musique suivante",
-                    "previous": "musique précédente",
-                    "stop": "arrête la musique",
-                }[command_name]
+                command = {"play_pause": "pause la musique", "next": "musique suivante", "previous": "musique précédente", "stop": "arrête la musique"}[command_name]
             elif action == "pc.app.open":
-                app = str(args.get("app", "")).strip()
-                allowed = {"ets2": "ouvre euro truck simulator 2", "notepad": "ouvre le bloc-notes", "calculator": "ouvre la calculatrice"}
-                command = allowed.get(app.lower())
+                app = str(args.get("app", "")).strip().lower()
+                command = {"ets2": "ouvre euro truck simulator 2", "notepad": "ouvre le bloc-notes", "calculator": "ouvre la calculatrice"}.get(app)
                 if command is None:
                     return {"accepted": False, "reason": "APP_NOT_ALLOWLISTED"}
             elif action == "pc.browser.open":
@@ -168,18 +151,21 @@ def _start_mobile_bridge() -> None:
                 "processing": bool(getattr(state, "is_processing", False)),
                 "model": assistant.get_active_model(False),
                 "provider": cfg.get("ai_provider", "ollama"),
-                "timestamp": __import__("time").time(),
+                "timestamp": time.time(),
             }
 
         bridge.action_handler = action_handler
         bridge.state_provider = state_provider
+        assistant.signals.log_msg.connect(
+            lambda sender, message: bridge.publish_from_thread("log", {"sender": sender, "message": message})
+        )
         bridge.start_discovery()
         threading.Thread(
-            target=lambda: uvicorn.run(bridge.app, host=bridge.host, port=bridge.ws_port, log_level="warning"),
+            target=lambda: uvicorn.run(bridge.app, host=bridge.host, port=bridge.port, log_level="warning"),
             daemon=True,
             name="NEO-mobile-bridge",
         ).start()
-        assistant.log.info(f"MOBILE: passerelle active sur le port {bridge.ws_port} | code: {bridge.pairing_code}")
+        assistant.log.info(f"MOBILE: passerelle active sur le port {bridge.port} | code: {bridge.pairing_code}")
     except Exception as exc:
         try:
             assistant.log.warning(f"MOBILE: passerelle non démarrée : {exc}")
