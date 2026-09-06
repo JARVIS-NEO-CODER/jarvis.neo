@@ -55,30 +55,44 @@ async def _recv_json(ws: WebSocket) -> dict:
     return value
 
 
-async def _forward(source: WebSocket, target: WebSocket, tunnel: Tunnel) -> None:
+async def _send_if_attached(tunnel: Tunnel, raw: str) -> None:
+    remote = tunnel.remote
+    if remote is not None:
+        await remote.send_text(raw)
+
+
+async def _run_tunnel(tunnel: Tunnel) -> None:
+    """The tunnel connection owns all receives from the PC websocket."""
+    ws = tunnel.websocket
     while True:
-        raw = await source.receive_text()
+        raw = await ws.receive_text()
         if len(raw.encode("utf-8")) > MAX_FRAME_BYTES:
             raise ValueError("FRAME_TOO_LARGE")
         tunnel.last_seen = monotonic()
-        await target.send_text(raw)
+        await _send_if_attached(tunnel, raw)
 
 
-async def _relay_pair(tunnel: Tunnel, remote: WebSocket) -> None:
-    tasks = [
-        asyncio.create_task(_forward(remote, tunnel.websocket, tunnel)),
-        asyncio.create_task(_forward(tunnel.websocket, remote, tunnel)),
-    ]
-    try:
-        done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)
-        for task in done:
-            task.result()
-        for task in pending:
-            task.cancel()
-        if pending:
-            await asyncio.gather(*pending, return_exceptions=True)
-    finally:
-        tunnel.remote = None
+async def _run_tunnel_watchdog(tunnel: Tunnel) -> None:
+    while True:
+        await asyncio.sleep(10)
+        if monotonic() - tunnel.last_seen > IDLE_TIMEOUT:
+            raise TimeoutError("IDLE_TIMEOUT")
+        remote = tunnel.remote
+        if remote is not None:
+            try:
+                await remote.send_json({"type": "relay_ping", "protocol": PROTOCOL})
+            except Exception:
+                tunnel.remote = None
+
+
+async def _run_remote(tunnel: Tunnel, remote: WebSocket) -> None:
+    """The remote connection owns all receives from the mobile websocket."""
+    while True:
+        raw = await remote.receive_text()
+        if len(raw.encode("utf-8")) > MAX_FRAME_BYTES:
+            raise ValueError("FRAME_TOO_LARGE")
+        tunnel.last_seen = monotonic()
+        await tunnel.websocket.send_text(raw)
 
 
 @app.websocket("/ws")
@@ -111,15 +125,12 @@ async def websocket_relay(ws: WebSocket) -> None:
                 tunnel = Tunnel(ws, secret, monotonic(), monotonic())
                 tunnels[node_id] = tunnel
             await ws.send_json({"type": "tunnel_ready", "protocol": PROTOCOL, "node_id": node_id})
-            while True:
-                await asyncio.sleep(10)
-                if monotonic() - tunnel.last_seen > IDLE_TIMEOUT:
-                    raise TimeoutError("IDLE_TIMEOUT")
-                if tunnel.remote is not None:
-                    try:
-                        await tunnel.remote.send_json({"type": "relay_ping", "protocol": PROTOCOL})
-                    except Exception:
-                        tunnel.remote = None
+            watchdog = asyncio.create_task(_run_tunnel_watchdog(tunnel))
+            try:
+                await _run_tunnel(tunnel)
+            finally:
+                watchdog.cancel()
+                await asyncio.gather(watchdog, return_exceptions=True)
 
         elif role == "remote":
             if not node_id:
@@ -144,7 +155,7 @@ async def websocket_relay(ws: WebSocket) -> None:
                 tunnel.last_seen = monotonic()
             await ws.send_json({"type": "remote_attached", "protocol": PROTOCOL, "node_id": node_id})
             await tunnel.websocket.send_json({"type": "remote_attached", "protocol": PROTOCOL, "node_id": node_id})
-            await _relay_pair(tunnel, ws)
+            await _run_remote(tunnel, ws)
         else:
             await ws.close(code=1008, reason="INVALID_ROLE")
     except (WebSocketDisconnect, asyncio.TimeoutError, TimeoutError, ValueError, json.JSONDecodeError):
@@ -160,6 +171,7 @@ async def websocket_relay(ws: WebSocket) -> None:
                             await tunnel.remote.close(code=1012, reason="PC_OFFLINE")
                         except Exception:
                             pass
+                    tunnel.remote = None
                 elif role == "remote" and current is tunnel and tunnel.remote is ws:
                     tunnel.remote = None
                     try:
