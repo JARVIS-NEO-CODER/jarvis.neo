@@ -65,12 +65,7 @@ class PermissionErrorJARVIS(Exception):
 
 
 class PluginContext:
-    """Small capability API exposed to plugins.
-
-    Plugin Python is still trusted code because Python modules cannot be securely
-    sandboxed inside the JARVIS process. The context therefore gates the official
-    JARVIS capabilities, while the store must additionally validate plugin code.
-    """
+    """Small capability API exposed to plugins."""
     def __init__(self, assistant, plugin_name, permissions):
         self.assistant = assistant
         self.plugin_name = plugin_name
@@ -196,7 +191,7 @@ class PlatformPluginManager:
 
 
 class MobileBridge:
-    """Pairing/token/WebSocket bridge for the future Flutter app and the PWA."""
+    """Pairing/token/WebSocket bridge for the Flutter app and the PWA."""
     def __init__(self, assistant):
         self.assistant = assistant
         self.app = FastAPI(title="J.A.R.V.I.S. NEO Mobile") if FASTAPI_OK else None
@@ -219,7 +214,11 @@ class MobileBridge:
     def _routes(self):
         @self.app.get("/mobile/info")
         async def info():
-            return {"name": "J.A.R.V.I.S. NEO", "version": self.assistant.VERSION, "pairing": bool(self.pair_code and time.time() < self.pair_expires)}
+            return {
+                "name": "J.A.R.V.I.S. NEO",
+                "version": self.assistant.VERSION,
+                "pairing": bool(self.pair_code and time.time() < self.pair_expires),
+            }
 
         @self.app.post("/mobile/pair")
         async def pair(payload: dict):
@@ -261,18 +260,100 @@ class MobileBridge:
 
         @self.app.websocket("/mobile/ws")
         async def ws(socket: WebSocket):
-            token = socket.query_params.get("token", "")
-            if not self._auth(token):
-                await socket.close(code=1008)
-                return
+            # The Flutter client first connects without a token, then sends either
+            # a pairing request with the six-digit code or an authentication request
+            # with an existing token. The old implementation checked the token before
+            # accepting the socket, which made first-time pairing impossible.
             await socket.accept()
-            self.clients.add(socket)
             try:
+                first_raw = await socket.receive_text()
+                first = json.loads(first_raw)
+                if not isinstance(first, dict) or first.get("protocol") != "jarvis-neo/1":
+                    await socket.send_json({"type": "error", "code": "PROTOCOL_MISMATCH"})
+                    await socket.close(code=1002)
+                    return
+
+                message_type = first.get("type")
+                if message_type == "pair":
+                    code = str(first.get("code", ""))
+                    device_id = str(first.get("device_id") or uuid.uuid4())
+                    name = str(first.get("name") or "Téléphone")[:60]
+                    if (
+                        not self.pair_code
+                        or time.time() >= self.pair_expires
+                        or not secrets.compare_digest(code, self.pair_code)
+                    ):
+                        await socket.send_json({"type": "error", "code": "PAIRING_REJECTED", "message": "Code d'appairage invalide ou expiré"})
+                        await socket.close(code=1008)
+                        return
+                    token = secrets.token_urlsafe(32)
+                    self.devices[device_id] = {
+                        "name": name,
+                        "token": token,
+                        "created_at": time.time(),
+                        "revoked": False,
+                    }
+                    _write_json(DEVICES_FILE, self.devices)
+                    self.pair_code = None
+                    await socket.send_json({
+                        "type": "paired",
+                        "protocol": "jarvis-neo/1",
+                        "device_id": device_id,
+                        "token": token,
+                    })
+                    token_ok = True
+                elif message_type == "authenticate":
+                    token = str(first.get("token", ""))
+                    device_id = str(first.get("device_id", ""))
+                    token_ok = bool(
+                        device_id
+                        and device_id in self.devices
+                        and self.devices[device_id].get("token") == token
+                        and not self.devices[device_id].get("revoked")
+                    )
+                    if not token_ok:
+                        await socket.send_json({"type": "error", "code": "AUTH_REJECTED"})
+                        await socket.close(code=1008)
+                        return
+                    await socket.send_json({"type": "authenticated", "protocol": "jarvis-neo/1", "device_id": device_id})
+                else:
+                    await socket.send_json({"type": "error", "code": "INVALID_HANDSHAKE"})
+                    await socket.close(code=1002)
+                    return
+
+                self.clients.add(socket)
                 await socket.send_json({"type": "status", "data": self.status()})
                 while True:
-                    await socket.receive_text()
+                    raw = await socket.receive_text()
+                    try:
+                        message = json.loads(raw)
+                    except Exception:
+                        await socket.send_json({"type": "error", "code": "INVALID_JSON"})
+                        continue
+                    if not isinstance(message, dict):
+                        continue
+                    if message.get("type") == "ping":
+                        await socket.send_json({"type": "pong", "protocol": "jarvis-neo/1"})
+                    elif message.get("type") == "status":
+                        await socket.send_json({"type": "status", "data": self.status(), "protocol": "jarvis-neo/1"})
+                    elif message.get("type") == "sync":
+                        await socket.send_json({"type": "sync", "data": self.status(), "protocol": "jarvis-neo/1"})
+                    elif message.get("type") == "action":
+                        action = str(message.get("action", ""))
+                        args = message.get("args") if isinstance(message.get("args"), dict) else {}
+                        await socket.send_json({
+                            "type": "action_result",
+                            "action": action,
+                            "data": self.command(action, bool(args.get("confirmed"))),
+                            "protocol": "jarvis-neo/1",
+                        })
             except WebSocketDisconnect:
                 pass
+            except Exception:
+                try:
+                    await socket.close(code=1011)
+                except Exception:
+                    pass
             finally:
                 self.clients.discard(socket)
 
@@ -299,7 +380,6 @@ class MobileBridge:
         if sensitive and not confirmed:
             return {"ok": False, "confirmation_required": True, "message": "Cette action nécessite une confirmation."}
         try:
-            # Reuse the existing safe command engine instead of accepting arbitrary shell commands.
             result = self.assistant.processor.process(text)
             self.broadcast({"type": "notification", "message": result})
             return {"ok": True, "result": result}
@@ -307,7 +387,6 @@ class MobileBridge:
             return {"ok": False, "error": str(exc)}
 
     def broadcast(self, payload):
-        # WebSocket objects belong to the event loop; notifications are best-effort.
         async def _send():
             dead = []
             for client in list(self.clients):
