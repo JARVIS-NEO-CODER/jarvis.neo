@@ -1,6 +1,7 @@
 @echo off
 title J.A.R.V.I.S. NEO
 cd /d "%~dp0"
+set "JARVIS_REMOTE_RELAY_URL=wss://jarvis-neo-relay.onrender.com"
 echo.
 echo ================================================
 echo       J.A.R.V.I.S. NEO - NEO COMMAND CENTER
