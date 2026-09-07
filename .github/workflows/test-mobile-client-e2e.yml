@@ -1,0 +1,57 @@
+name: JARVIS NEO PC <-> Mobile Client E2E
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'jarvis_mobile_bridge.py'
+      - 'tests/e2e_mobile_server.py'
+      - '.github/workflows/test-mobile-client-e2e.yml'
+  pull_request:
+    paths:
+      - 'jarvis_mobile_bridge.py'
+      - 'tests/e2e_mobile_server.py'
+      - '.github/workflows/test-mobile-client-e2e.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  flutter-client:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PC
+        uses: actions/checkout@v4
+      - name: Checkout current mobile client
+        uses: actions/checkout@v4
+        with:
+          repository: JARVIS-NEO-CODER/jarvis-neo-mobile
+          path: mobile
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.5'
+          channel: stable
+          cache: true
+      - name: Install PC bridge runtime
+        run: python -m pip install 'fastapi>=0.115,<1' 'uvicorn>=0.30,<1'
+      - name: Start real PC bridge
+        run: |
+          JARVIS_E2E_PORT=8890 JARVIS_E2E_DEVICES_FILE=/tmp/jarvis-e2e-devices.json python -m uvicorn tests.e2e_mobile_server:app --host 127.0.0.1 --port 8890 --log-level warning > /tmp/jarvis-pc-e2e.log 2>&1 &
+          sleep 2
+          curl -fsS http://127.0.0.1:8890/docs >/dev/null
+      - name: Run Flutter E2E
+        working-directory: mobile
+        run: |
+          flutter pub get
+          flutter test test/pc_bridge_e2e_test.dart -r expanded
+      - name: Dump bridge logs on failure
+        if: failure()
+        run: cat /tmp/jarvis-pc-e2e.log || true
+      - name: Result
+        if: always()
+        run: |
+          echo 'PC <-> FLUTTER E2E: pairing/auth/status/sync/action/reconnect tested'
