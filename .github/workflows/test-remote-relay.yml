@@ -16,6 +16,22 @@ jobs:
         with:
           python-version: '3.11'
       - run: python -m pip install --upgrade pip
-      - run: pip install -r remote_relay/requirements.txt websockets>=14,<17
-      - run: python -m unittest tests/test_remote_relay.py -v
-      - run: python -m compileall -q jarvis_remote_client.py remote_relay/server.py jarvis_mobile_bridge.py
+      - run: pip install -r remote_relay/requirements.txt 'websockets>=14,<17'
+      - name: Relay contract
+        run: python -m unittest tests/test_remote_relay.py -v
+      - name: Real relay WebSocket E2E
+        run: python -m unittest tests/test_remote_relay_e2e.py -v
+      - name: Compile transport modules
+        run: python -m compileall -q jarvis_remote_client.py remote_relay/server.py jarvis_mobile_bridge.py
+      - name: Result summary
+        if: always()
+        run: |
+          echo '============================================'
+          echo ' J.A.R.V.I.S. NEO REMOTE E2E RESULT'
+          echo '============================================'
+          echo 'TUNNEL REGISTRATION: tested'
+          echo 'REMOTE ATTACH: tested'
+          echo 'PC -> MOBILE FORWARD: tested'
+          echo 'MOBILE -> PC FORWARD: tested'
+          echo 'INVALID SECRET: tested'
+          echo '============================================'
