@@ -56,10 +56,7 @@ class MobileBridgeE2ETests(unittest.TestCase):
         async def scenario():
             uri = BASE + "/mobile/ws"
             async with websockets.connect(uri) as ws:
-                await ws.send(json.dumps({
-                    "type": "pair", "protocol": PROTOCOL,
-                    "code": "123456", "device_id": "ci-mobile", "name": "CI Mobile",
-                }))
+                await ws.send(json.dumps({"type": "pair", "protocol": PROTOCOL, "code": "123456", "device_id": "ci-mobile", "name": "CI Mobile"}))
                 paired = json.loads(await ws.recv())
                 self.assertEqual(paired["type"], "paired")
                 self.assertEqual(paired["protocol"], PROTOCOL)
@@ -67,9 +64,9 @@ class MobileBridgeE2ETests(unittest.TestCase):
                 device_id = paired["device_id"]
                 self.assertTrue(token)
 
-                state = json.loads(await ws.recv())
-                self.assertEqual(state["type"], "status")
-                self.assertTrue(state["data"]["online"])
+                initial = json.loads(await ws.recv())
+                self.assertEqual(initial["type"], "status")
+                self.assertTrue(initial["data"]["online"])
 
                 await ws.send(json.dumps({"type": "ping", "protocol": PROTOCOL, "token": token, "device_id": device_id, "request_id": "r1"}))
                 pong = json.loads(await ws.recv())
@@ -99,8 +96,8 @@ class MobileBridgeE2ETests(unittest.TestCase):
                 auth = json.loads(await ws.recv())
                 self.assertEqual(auth["type"], "authenticated")
                 self.assertEqual(auth["protocol"], PROTOCOL)
-                state = json.loads(await ws.recv())
-                self.assertEqual(state["type"], "status")
+                initial = json.loads(await ws.recv())
+                self.assertEqual(initial["type"], "status")
 
         asyncio.run(scenario())
 
