@@ -36,30 +36,23 @@ def _start_core_workers() -> None:
 
 
 def _upgrade_voice_profile() -> None:
-    """Migrate the old default voice while preserving explicit user choices."""
+    """Use the independent Microsoft Edge neural voice and migrate old Pocket settings."""
     cfg = getattr(assistant, "CONFIG", None)
     if not isinstance(cfg, dict):
         return
-    if str(cfg.get("voice", "")).strip() in {"fr-FR-HenriNeural", "fr-FR-ClaudeNeural"}:
-        cfg["voice"] = "pocket-estelle"
-        cfg["tts_rate"] = "-5%"
+
+    current = str(cfg.get("voice", "")).strip()
+    # Pocket TTS must never be selected by the launcher anymore. Migrate the
+    # persisted Pocket profile back to a current French neural Edge voice.
+    if current in {"pocket-estelle", "pocket_tts", "pocket-tts", "estelle"}:
+        cfg["voice"] = "fr-FR-RemyMultilingualNeural"
+        cfg["tts_rate"] = "+0%"
         try:
             assistant.save_config(cfg)
         except Exception:
             pass
+
     assistant.VOICE = str(cfg.get("voice", assistant.VOICE))
-
-
-def _install_pocket_tts() -> None:
-    """Install Pocket TTS as the primary voice backend when available."""
-    try:
-        from core.pocket_tts_engine import install
-        install(assistant)
-    except Exception as exc:
-        try:
-            assistant.log.warning(f"Pocket TTS non chargé, moteur vocal précédent conservé : {exc}")
-        except Exception:
-            pass
 
 
 def _start_mobile_bridge() -> None:
@@ -193,7 +186,6 @@ def main() -> None:
     app.setQuitOnLastWindowClosed(False)
     sitecustomize.install_runtime_fixes(assistant)
     _upgrade_voice_profile()
-    _install_pocket_tts()
 
     from ui.neo_main_hud_v2 import NeoMainHud
     hud = NeoMainHud(assistant)
