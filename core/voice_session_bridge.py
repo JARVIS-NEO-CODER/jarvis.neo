@@ -6,12 +6,12 @@ import time
 
 
 def _install_application_resolver(assistant) -> None:
-    """Replace the legacy hardcoded app registry with runtime discovery."""
+    """Replace legacy app lookup with runtime discovery for both normal and agent paths."""
     try:
         from core.application_resolver import ApplicationResolver
         tools = getattr(assistant, "tools", None)
-        if tools is None or getattr(tools, "_neo_application_resolver", False):
-            return
+        processor = getattr(assistant, "processor", None)
+        action_engine = getattr(processor, "_neo_action_engine", None) if processor else None
 
         aliases = {
             "calculatrice": "calc.exe",
@@ -23,6 +23,7 @@ def _install_application_resolver(assistant) -> None:
             "vscode": "code",
             "visual studio code": "code",
             "chrome": "chrome",
+            "google chrome": "chrome",
             "discord": "Discord",
             "spotify": "Spotify",
             "steam": "steam",
@@ -38,21 +39,28 @@ def _install_application_resolver(assistant) -> None:
                 return True, f"Navigation ouverte : {name}"
             try:
                 match = resolver.launch(name)
-                try:
-                    tools.activity("outil", f"Lancement {name} via {match.source}")
-                except Exception:
-                    pass
+                if tools is not None:
+                    try:
+                        tools.activity("outil", f"Lancement {name} via {match.source}")
+                    except Exception:
+                        pass
                 return True, f"{name} lancé."
             except FileNotFoundError:
-                # Do not invent a filesystem path. The resolver searches Start Menu,
-                # PATH and configured aliases before reporting the app as unknown.
                 return False, f"Application introuvable : '{name}'."
             except (OSError, ValueError) as exc:
                 return False, f"Impossible de lancer {name} : {exc}"
 
-        tools.open_application = open_application
-        tools._neo_application_resolver = True
-        tools._neo_application_resolver_instance = resolver
+        if tools is not None and not getattr(tools, "_neo_application_resolver", False):
+            tools.open_application = open_application
+            tools._neo_application_resolver = True
+            tools._neo_application_resolver_instance = resolver
+
+        # The Agent path uses ActionEngine directly, so wire the same resolver there.
+        if action_engine is not None:
+            definition = getattr(action_engine, "_actions", {}).get("action.launch_app")
+            if definition is not None and not getattr(action_engine, "_neo_application_resolver", False):
+                definition.handler = open_application
+                action_engine._neo_application_resolver = True
     except Exception as exc:
         try:
             assistant.log.debug(f"Résolveur applications non installé : {exc}")
@@ -119,8 +127,6 @@ def install(assistant, session) -> bool:
                     state.is_listening = True
                     signals.listening_change.emit(True)
 
-                    # Calibrate once. Recalibrating before every sentence can move the
-                    # threshold above the user's voice and make JARVIS appear deaf.
                     if not calibrated:
                         recognizer.adjust_for_ambient_noise(source, duration=0.8)
                         recognizer.energy_threshold = max(120, min(recognizer.energy_threshold, 900))
@@ -132,7 +138,6 @@ def install(assistant, session) -> bool:
                         )
 
                     audio = recognizer.listen(source, timeout=4, phrase_time_limit=8)
-
                     raw = np.frombuffer(audio.get_raw_data(), dtype=np.int16) if SOUND_OK else None
                     if raw is not None and len(raw) > 0:
                         level = min(1.0, float(np.abs(raw).mean()) / 6000.0)
@@ -140,8 +145,12 @@ def install(assistant, session) -> bool:
                         signals.audio_level.emit(level)
 
                     text = None
-                    if config.get("use_whisper") and SOUND_OK and raw is not None:
-                        text = transcribe_audio(raw.astype(np.float32) / 32768.0, sample_rate=audio.sample_rate)
+                    whisper_available = bool(getattr(assistant, "WHISPER_OK", False))
+                    if (config.get("use_whisper") or whisper_available) and SOUND_OK and raw is not None:
+                        try:
+                            text = transcribe_audio(raw.astype(np.float32) / 32768.0, sample_rate=audio.sample_rate)
+                        except Exception as exc:
+                            assistant.log.debug(f"STT Whisper indisponible, retour reconnaissance en ligne : {exc}")
                     if not text:
                         text = recognizer.recognize_google(audio, language=language)
 
