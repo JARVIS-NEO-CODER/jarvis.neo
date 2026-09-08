@@ -36,14 +36,12 @@ def _start_core_workers() -> None:
 
 
 def _upgrade_voice_profile() -> None:
-    """Use the independent Microsoft Edge neural voice and migrate old Pocket settings."""
+    """Use an independent Microsoft Edge neural voice and migrate old Pocket settings."""
     cfg = getattr(assistant, "CONFIG", None)
     if not isinstance(cfg, dict):
         return
 
     current = str(cfg.get("voice", "")).strip()
-    # Pocket TTS must never be selected by the launcher anymore. Migrate the
-    # persisted Pocket profile back to a current French neural Edge voice.
     if current in {"pocket-estelle", "pocket_tts", "pocket-tts", "estelle"}:
         cfg["voice"] = "fr-FR-RemyMultilingualNeural"
         cfg["tts_rate"] = "+0%"
@@ -53,6 +51,46 @@ def _upgrade_voice_profile() -> None:
             pass
 
     assistant.VOICE = str(cfg.get("voice", assistant.VOICE))
+
+
+def _install_independent_edge_tts() -> None:
+    """Route JARVIS speech through the independent Edge neural backend."""
+    speech_cls = getattr(assistant, "SpeechEngine", None)
+    if speech_cls is None or getattr(speech_cls, "_neo_edge_tts", False):
+        return
+
+    original_say = getattr(speech_cls, "_say", None)
+    if original_say is None:
+        return
+
+    try:
+        from core.tts_edge_player import speak as edge_speak
+    except Exception as exc:
+        assistant.log.warning(f"VOICE: moteur Edge indépendant non chargé : {exc}")
+        return
+
+    async def edge_say(self, text):
+        state = getattr(assistant, "state", None)
+        if state is None or not getattr(state, "voice_enabled", True) or not text:
+            return
+
+        voice = str(getattr(assistant, "CONFIG", {}).get("voice", "fr-FR-HenriNeural"))
+        if voice.startswith("pocket") or voice in {"estelle", "pocket-tts"}:
+            voice = "fr-FR-RemyMultilingualNeural"
+
+        ok = await edge_speak(
+            text,
+            state=state,
+            voice=voice,
+            rate=str(getattr(assistant, "CONFIG", {}).get("tts_rate", "+0%")),
+            volume=str(getattr(assistant, "CONFIG", {}).get("tts_volume", "+0%")),
+        )
+        if not ok:
+            await original_say(self, text)
+
+    speech_cls._say = edge_say
+    speech_cls._neo_edge_tts = True
+    assistant.log.info(f"VOICE: Edge neural indépendant activé ({assistant.VOICE})")
 
 
 def _start_mobile_bridge() -> None:
@@ -186,6 +224,7 @@ def main() -> None:
     app.setQuitOnLastWindowClosed(False)
     sitecustomize.install_runtime_fixes(assistant)
     _upgrade_voice_profile()
+    _install_independent_edge_tts()
 
     from ui.neo_main_hud_v2 import NeoMainHud
     hud = NeoMainHud(assistant)
