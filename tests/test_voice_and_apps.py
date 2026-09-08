@@ -37,7 +37,7 @@ class VoiceAndApplicationTests(unittest.TestCase):
         fake_log = SimpleNamespace(info=lambda *_args: None, warning=lambda *_args: None)
         assistant = SimpleNamespace(tools=fake_tools, signals=fake_signals, log=fake_log)
 
-        self.assertTrue(_try_direct_app_command(assistant, "Jarvis lance Minecraft"))
+        self.assertTrue(_try_direct_app_command(assistant, "lance Minecraft"))
         self.assertEqual(calls, ["Minecraft"])
 
     def test_direct_voice_launch_handles_ouvre(self):
