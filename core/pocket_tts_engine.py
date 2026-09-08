@@ -7,6 +7,7 @@ model and keeps the voice state cached in memory.
 from __future__ import annotations
 
 import asyncio
+import re
 import threading
 from pathlib import Path
 
@@ -20,6 +21,22 @@ class PocketTTSEngine:
         self._voice_state = None
         self._lock = threading.Lock()
         self._available: bool | None = None
+
+    available_voice = "estelle"
+
+    @staticmethod
+    def normalize_text(text: str) -> str:
+        """Turn chat/LLM formatting into natural spoken French."""
+        clean = str(text or "")
+        clean = re.sub(r"```.*?```", " ", clean, flags=re.S)
+        clean = re.sub(r"`([^`]*)`", r"\1", clean)
+        clean = re.sub(r"https?://\S+", " lien web ", clean)
+        clean = re.sub(r"\bJ\s*[.·•]\s*A\s*[.·•]\s*R\s*[.·•]\s*V\s*[.·•]\s*I\s*[.·•]\s*S\b", "JARVIS", clean, flags=re.I)
+        clean = re.sub(r"\bJ\s*\.\s*A\s*\.\s*R\s*\.\s*V\s*\.\s*I\s*\.\s*S\s*\.?\b", "JARVIS", clean, flags=re.I)
+        clean = re.sub(r"\s+([,;:!?])", r"\1", clean)
+        clean = re.sub(r"([,;:!?])(?=\S)", r"\1 ", clean)
+        clean = re.sub(r"\s{2,}", " ", clean)
+        return clean.strip()
 
     def available(self) -> bool:
         if self._available is not None:
@@ -42,22 +59,25 @@ class PocketTTSEngine:
 
         from pocket_tts import TTSModel
 
-        # French is currently exposed by Pocket TTS through french_24l.
-        # Try int8 quantization first when the optional backend is available,
-        # then fall back to the normal CPU model without adding dependencies.
         try:
-            self._model = TTSModel.load_model(language="french_24l", quantize=True)
+            self._model = TTSModel.load_model(
+                language="french_24l",
+                quantize=True,
+                sampler_decode_steps=2,
+            )
         except Exception:
-            self._model = TTSModel.load_model(language="french_24l")
+            self._model = TTSModel.load_model(
+                language="french_24l",
+                sampler_decode_steps=2,
+            )
 
-        # "estelle" is Pocket TTS's built-in default French voice.
-        self._voice_state = self._model.get_state_for_audio_prompt("estelle")
+        self._voice_state = self._model.get_state_for_audio_prompt(self.available_voice)
 
     def synthesize(self, text: str, output_path: Path) -> int:
         if not self.available():
             raise RuntimeError("Pocket TTS n'est pas installé")
 
-        clean = str(text or "").strip()
+        clean = self.normalize_text(text)
         if not clean:
             raise ValueError("Texte vocal vide")
 
@@ -105,12 +125,16 @@ def install(assistant) -> bool:
         if state is None or not state.voice_enabled or not text:
             return
 
+        clean_text = engine.normalize_text(text)
+        if not clean_text:
+            return
+
         path = assistant.BASE_DIR / f"pocket_speech_{assistant.time.time_ns()}.wav"
         state.is_speaking = True
         assistant.signals.speaking_change.emit(True)
         spoken = False
         try:
-            await asyncio.to_thread(engine.synthesize, str(text), path)
+            await asyncio.to_thread(engine.synthesize, clean_text, path)
             if not assistant.PYGAME_OK:
                 raise RuntimeError("pygame audio indisponible")
             if not assistant.pygame.mixer.get_init():
@@ -137,8 +161,11 @@ def install(assistant) -> bool:
                 pass
 
         if not spoken:
-            # sitecustomize's Edge TTS implementation remains the fallback.
-            await original_say(self, text)
+            try:
+                await original_say(self, clean_text)
+            finally:
+                state.is_speaking = False
+                assistant.signals.speaking_change.emit(False)
             return
 
         state.is_speaking = False
