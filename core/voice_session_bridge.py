@@ -1,4 +1,4 @@
-"""Bridge the legacy voice worker to a reliable microphone and app resolver."""
+"""Bridge the legacy voice worker to a reliable microphone, app resolver and TTS."""
 from __future__ import annotations
 
 import re
@@ -30,32 +30,32 @@ def _install_application_resolver(assistant) -> None:
         }
         resolver = ApplicationResolver(aliases)
 
-        def open_application(requested: str):
-            name = str(requested or "").strip()
-            if not name:
+        def open_application(requested: str = "", command: str | None = None, name: str | None = None, **_kwargs):
+            value = requested or command or name or ""
+            app_name = str(value).strip()
+            if not app_name:
                 return False, "Nom d'application manquant."
-            if name.lower().startswith(("http://", "https://")):
-                assistant.signals.open_url.emit(name)
-                return True, f"Navigation ouverte : {name}"
+            if app_name.lower().startswith(("http://", "https://")):
+                assistant.signals.open_url.emit(app_name)
+                return True, f"Navigation ouverte : {app_name}"
             try:
-                match = resolver.launch(name)
+                match = resolver.launch(app_name)
                 if tools is not None:
                     try:
-                        tools.activity("outil", f"Lancement {name} via {match.source}")
+                        tools.activity("outil", f"Lancement {app_name} via {match.source}")
                     except Exception:
                         pass
-                return True, f"{name} lancé."
+                return True, f"{app_name} lancé."
             except FileNotFoundError:
-                return False, f"Application introuvable : '{name}'."
+                return False, f"Application introuvable : '{app_name}'."
             except (OSError, ValueError) as exc:
-                return False, f"Impossible de lancer {name} : {exc}"
+                return False, f"Impossible de lancer {app_name} : {exc}"
 
         if tools is not None and not getattr(tools, "_neo_application_resolver", False):
             tools.open_application = open_application
             tools._neo_application_resolver = True
             tools._neo_application_resolver_instance = resolver
 
-        # The Agent path uses ActionEngine directly, so wire the same resolver there.
         if action_engine is not None:
             definition = getattr(action_engine, "_actions", {}).get("action.launch_app")
             if definition is not None and not getattr(action_engine, "_neo_application_resolver", False):
@@ -79,6 +79,53 @@ def _microphone_index(assistant):
         return None
 
 
+def _try_direct_app_command(assistant, text: str) -> bool:
+    """Execute simple voice launch commands without sending them through the LLM planner.
+
+    This prevents commands such as 'Jarvis lance Minecraft' from being interpreted
+    as a file/path operation by the agent. Resolution remains allowlisted by the
+    ApplicationResolver and does not execute a shell command.
+    """
+    normalized = str(text or "").strip()
+    match = re.match(
+        r"^(?:ouvre|lance|démarre|demarre|démarrer|demarrer|ouvrir)\s+(?:l['’]application\s+|l['’]app\s+)?(.+?)\s*[.!?]*$",
+        normalized,
+        flags=re.I,
+    )
+    if not match:
+        return False
+
+    app_name = match.group(1).strip(" \t.,!?\"'")
+    if not app_name:
+        return False
+    try:
+        tools = getattr(assistant, "tools", None)
+        opener = getattr(tools, "open_application", None)
+        if not callable(opener):
+            return False
+        success, message = opener(app_name)
+        if success:
+            assistant.signals.log_msg.emit("J.A.R.V.I.S.", message)
+            return True
+        assistant.log.info("VOICE: lancement direct impossible pour '%s': %s", app_name, message)
+        return False
+    except Exception as exc:
+        assistant.log.warning("VOICE: lancement direct échoué pour '%s': %s", app_name, exc)
+        return False
+
+
+def _install_piper_tts(assistant) -> None:
+    """Install local Piper as the primary TTS backend, independent of cloud TTS."""
+    try:
+        from core.piper_tts_engine import install
+        install(assistant)
+    except Exception as exc:
+        try:
+            assistant.log.warning(f"VOICE: Piper TTS non installé : {exc}")
+        except Exception:
+            pass
+
+
 def install(assistant, session) -> bool:
     """Replace the legacy passive-listening loop with session-aware behavior."""
     if getattr(assistant, "_neo_voice_session_bridge", False):
@@ -100,6 +147,7 @@ def install(assistant, session) -> bool:
         return False
 
     _install_application_resolver(assistant)
+    _install_piper_tts(assistant)
     device_index = _microphone_index(assistant)
 
     def enqueue_command(text: str) -> None:
@@ -171,7 +219,8 @@ def install(assistant, session) -> bool:
                             ).strip(" ,.!?")
                             signals.log_msg.emit("Vous (Voix)", normalized)
                             if clean_cmd:
-                                enqueue_command(clean_cmd)
+                                if not _try_direct_app_command(assistant, clean_cmd):
+                                    enqueue_command(clean_cmd)
                             else:
                                 session.begin_response()
                                 try:
@@ -180,11 +229,13 @@ def install(assistant, session) -> bool:
                                     session.touch()
                         elif session.accepts_followup():
                             signals.log_msg.emit("Vous (Voix)", normalized)
-                            enqueue_command(normalized)
+                            if not _try_direct_app_command(assistant, normalized):
+                                enqueue_command(normalized)
                     else:
                         session.start()
                         signals.log_msg.emit("Vous (Voix)", normalized)
-                        enqueue_command(normalized)
+                        if not _try_direct_app_command(assistant, normalized):
+                            enqueue_command(normalized)
             except sr.WaitTimeoutError:
                 state.is_listening = False
                 signals.listening_change.emit(False)
