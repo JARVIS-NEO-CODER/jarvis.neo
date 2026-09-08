@@ -1,6 +1,7 @@
 """Dynamic local application discovery and resolution."""
 from __future__ import annotations
 
+import difflib
 import os
 import shutil
 import subprocess
@@ -23,7 +24,9 @@ class ApplicationResolver:
 
     @staticmethod
     def _normalize(value: str) -> str:
-        return " ".join(value.casefold().strip().split())
+        value = value.casefold().strip()
+        value = value.removesuffix(".exe")
+        return " ".join(value.split())
 
     @staticmethod
     def _start_menu_roots() -> tuple[Path, ...]:
@@ -31,8 +34,8 @@ class ApplicationResolver:
             return ()
         roots = []
         for raw in (
-            os.environ.get("APPDATA", "") + r"\Microsoft\Windows\Start Menu\Programs",
-            os.environ.get("PROGRAMDATA", "") + r"\Microsoft\Windows\Start Menu\Programs",
+            os.path.join(os.environ.get("APPDATA", ""), r"Microsoft\Windows\Start Menu\Programs"),
+            os.path.join(os.environ.get("PROGRAMDATA", ""), r"Microsoft\Windows\Start Menu\Programs"),
         ):
             if raw:
                 path = Path(raw)
@@ -44,9 +47,14 @@ class ApplicationResolver:
         """Build the application inventory from the current machine at runtime."""
         matches: dict[str, ApplicationMatch] = {}
         for root in self._start_menu_roots():
-            for path in root.rglob("*.lnk"):
-                key = self._normalize(path.stem)
-                matches.setdefault(key, ApplicationMatch(path.stem, path, "start_menu"))
+            try:
+                iterator = root.rglob("*.lnk")
+                for path in iterator:
+                    key = self._normalize(path.stem)
+                    matches.setdefault(key, ApplicationMatch(path.stem, path, "start_menu"))
+            except OSError:
+                continue
+
         for directory in os.environ.get("PATH", "").split(os.pathsep):
             if not directory:
                 continue
@@ -60,25 +68,38 @@ class ApplicationResolver:
                         matches.setdefault(key, ApplicationMatch(path.stem, path, "path"))
             except OSError:
                 continue
+
         for alias, target in self.aliases.items():
             resolved = shutil.which(target) or target
-            matches[alias] = ApplicationMatch(alias, resolved, "config")
+            matches.setdefault(alias, ApplicationMatch(alias, resolved, "config"))
         return sorted(matches.values(), key=lambda item: item.name.casefold())
 
     def resolve(self, requested: str) -> ApplicationMatch | None:
-        query = self._normalize(requested.removesuffix(".exe"))
+        query = self._normalize(str(requested))
+        if not query:
+            return None
+
         alias = self.aliases.get(query)
         if alias:
             target = shutil.which(alias) or alias
             return ApplicationMatch(requested.strip(), target, "config")
 
-        direct = shutil.which(requested.strip()) or shutil.which(requested.strip() + ".exe")
+        direct = shutil.which(str(requested).strip()) or shutil.which(str(requested).strip() + ".exe")
         if direct:
-            return ApplicationMatch(requested.strip(), Path(direct), "path")
+            return ApplicationMatch(str(requested).strip(), Path(direct), "path")
 
-        for match in self.discover():
-            if self._normalize(match.name) == query:
-                return match
+        inventory = self.discover()
+        exact = next((match for match in inventory if self._normalize(match.name) == query), None)
+        if exact:
+            return exact
+
+        # Voice recognition often produces tiny spelling variations.
+        # Accept only a strong name match, never an arbitrary executable.
+        names = [self._normalize(match.name) for match in inventory]
+        close = difflib.get_close_matches(query, names, n=1, cutoff=0.86)
+        if close:
+            return next(match for match in inventory if self._normalize(match.name) == close[0])
+
         return None
 
     def launch(self, requested: str) -> ApplicationMatch:
