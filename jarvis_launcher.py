@@ -15,33 +15,14 @@ def _start_core_workers():
             try: assistant.log.warning(f"Service NEO non lancé : {exc}")
             except Exception: pass
 
-def _upgrade_voice_profile():
-    cfg=getattr(assistant,"CONFIG",None)
-    if not isinstance(cfg,dict): return
-    current=str(cfg.get("voice","")).strip()
-    if current in {"pocket-estelle","pocket_tts","pocket-tts","estelle"}:
-        cfg["voice"]="fr-FR-RemyMultilingualNeural"; cfg["tts_rate"]="+0%"
-        try: assistant.save_config(cfg)
-        except Exception: pass
-    assistant.VOICE=str(cfg.get("voice",assistant.VOICE))
-
-def _install_independent_edge_tts():
-    speech_cls=getattr(assistant,"SpeechEngine",None)
-    if speech_cls is None or getattr(speech_cls,"_neo_edge_tts",False): return
-    original_say=getattr(speech_cls,"_say",None)
-    if original_say is None: return
-    try: from core.tts_edge_player import speak as edge_speak
+def _install_pocket_voice():
+    """Install the local French neural voice before any response is spoken."""
+    try:
+        from core.piper_tts_engine import install
+        install(assistant)
+        assistant.log.info("VOICE: moteur local Pocket TTS sélectionné, sans fallback cloud/OS")
     except Exception as exc:
-        assistant.log.warning(f"VOICE: moteur Edge indépendant non chargé : {exc}"); return
-    async def edge_say(self,text):
-        state=getattr(assistant,"state",None)
-        if state is None or not getattr(state,"voice_enabled",True) or not text: return
-        voice=str(getattr(assistant,"CONFIG",{}).get("voice","fr-FR-HenriNeural"))
-        if voice.startswith("pocket") or voice in {"estelle","pocket-tts"}: voice="fr-FR-RemyMultilingualNeural"
-        ok=await edge_speak(text,state=state,voice=voice,rate=str(getattr(assistant,"CONFIG",{}).get("tts_rate","+0%")),volume=str(getattr(assistant,"CONFIG",{}).get("tts_volume","+0%")))
-        if not ok: await original_say(self,text)
-    speech_cls._say=edge_say; speech_cls._neo_edge_tts=True
-    assistant.log.info(f"VOICE: Edge neural indépendant activé ({assistant.VOICE})")
+        assistant.log.error(f"VOICE: Pocket TTS indisponible : {exc}")
 
 def _start_mobile_bridge():
     try:
@@ -105,7 +86,7 @@ def _start_mobile_bridge():
         except Exception: pass
 
 def main():
-    app=QApplication(sys.argv); app.setQuitOnLastWindowClosed(False); sitecustomize.install_runtime_fixes(assistant); _upgrade_voice_profile(); _install_independent_edge_tts()
+    app=QApplication(sys.argv); app.setQuitOnLastWindowClosed(False); sitecustomize.install_runtime_fixes(assistant); _install_pocket_voice()
     from ui.cockpit_hud import CockpitHud
     hud=CockpitHud(assistant); assistant.cockpit=hud; assistant.show_cockpit_panel=hud.show_dynamic_panel; assistant.remove_cockpit_panel=hud.remove_dynamic_panel; assistant.clear_cockpit_panels=hud.clear_dynamic_panels; assistant.get_cockpit_panels=hud.dynamic_panels
     try:
