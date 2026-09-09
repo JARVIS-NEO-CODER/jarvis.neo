@@ -1,65 +1,44 @@
-"""Local neural TTS voice configuration for J.A.R.V.I.S. NEO.
+"""J.A.R.V.I.S. NEO voice profile.
 
-Primary voice: Piper VITS French Siwis, medium quality.
-No cloud fallback is used. The voice is intentionally explicit so the
-assistant does not silently switch to a generic Windows/cloud voice.
+The default is a deliberately selected local French neural voice from Kyutai
+Pocket TTS. No generic Windows/cloud fallback is permitted.
 """
-
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-import subprocess
-import tempfile
-import os
 
 
 @dataclass(frozen=True)
 class VoiceProfile:
     id: str
     language: str
-    model_filename: str
-    quality: str = "medium"
+    engine: str = "pocket-tts"
+    quality: str = "neural-24l"
 
 
-# Chosen deliberately: French, neural VITS, medium quality, local execution.
 DEFAULT_VOICE = VoiceProfile(
-    id="fr_FR-siwis-medium",
+    id="estelle",
     language="fr-FR",
-    model_filename="fr_FR-siwis-medium.onnx",
 )
 
 
 class LocalVoice:
-    """Small adapter around the bundled Piper executable/model."""
+    """Metadata adapter for the single approved JARVIS voice."""
 
     def __init__(self, root: Path | None = None, voice: VoiceProfile = DEFAULT_VOICE):
-        self.root = root or Path(__file__).resolve().parent.parent / "assets" / "voices"
+        self.root = root or Path.home() / ".jarvis_neo"
         self.voice = voice
-        self.model = self.root / voice.model_filename
-        self.piper = self.root / "piper.exe"
 
     def available(self) -> bool:
-        return self.piper.is_file() and self.model.is_file()
+        try:
+            import pocket_tts  # noqa: F401
+            return True
+        except Exception:
+            return False
 
     def synthesize(self, text: str, output: Path) -> Path:
         if not self.available():
-            raise RuntimeError(
-                f"Voix locale indisponible: {self.voice.id}. "
-                "Le moteur ne bascule volontairement pas vers une voix de secours."
-            )
-        text = text.strip()
-        if not text:
-            raise ValueError("Texte vide")
-        output.parent.mkdir(parents=True, exist_ok=True)
-        proc = subprocess.run(
-            [str(self.piper), "--model", str(self.model), "--output_file", str(output)],
-            input=text,
-            text=True,
-            capture_output=True,
-            check=False,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        )
-        if proc.returncode != 0:
-            raise RuntimeError(proc.stderr.strip() or "Piper TTS a échoué")
-        return output
+            raise RuntimeError("Pocket TTS français est requis. Aucun fallback vocal n'est utilisé.")
+        from core.piper_tts_engine import PocketTTSEngine
+        return PocketTTSEngine(self.root).synthesize(text, output)
