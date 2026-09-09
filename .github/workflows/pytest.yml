@@ -17,12 +17,12 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Install system audio dependency
-        run: sudo apt-get update && sudo apt-get install -y portaudio19-dev
+      - name: Install system audio and GUI dependencies
+        run: sudo apt-get update && sudo apt-get install -y portaudio19-dev xvfb
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           pip install pytest
-      - name: Run tests
-        run: python -m pytest -q
+      - name: Run tests in virtual display
+        run: xvfb-run -a python -m pytest -q
