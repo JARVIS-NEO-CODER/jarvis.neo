@@ -8,6 +8,7 @@ on:
       - 'assistant.spec'
       - 'sitecustomize.py'
       - 'jarvis_hud_runtime_hook.py'
+      - 'jarvis_launcher.py'
       - 'core/**'
       - 'ui/**'
       - 'requirements.txt'
