@@ -1,6 +1,7 @@
 # J.A.R.V.I.S. NEO runtime dependencies
 # Python 3.11 recommended
 # Whisper is intentionally optional: see requirements-voice.txt
+# Local neural French TTS: Kyutai Pocket TTS (Estelle), no cloud voice fallback.
 
 PyQt6>=6.7,<7
 PyQt6-WebEngine>=6.7,<7
