@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import socket
 
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import QDialog, QGridLayout, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget, QScrollArea, QFrame
 
 from core.cockpit_widget_engine import CockpitWidgetEngine
@@ -41,6 +41,10 @@ class _Card(QWidget):
 class CockpitHud(QDialog):
     """Full detachable NEO cockpit with live telemetry and dynamic panels."""
 
+    dynamic_request = pyqtSignal(str, str, str, str, str)
+    dynamic_remove_request = pyqtSignal(str)
+    dynamic_clear_request = pyqtSignal()
+
     def __init__(self, assistant, parent=None):
         super().__init__(parent)
         self.assistant = assistant
@@ -56,6 +60,9 @@ class CockpitHud(QDialog):
         )
         self._drag_pos = None
         self._build()
+        self.dynamic_request.connect(self.show_dynamic_panel)
+        self.dynamic_remove_request.connect(self.remove_dynamic_panel)
+        self.dynamic_clear_request.connect(self.clear_dynamic_panels)
         signals = getattr(assistant, "signals", None)
         if signals is not None:
             try:
@@ -179,11 +186,20 @@ class CockpitHud(QDialog):
     def show_dynamic_panel(self, panel_id: str, title: str, content: str = "", kind: str = "info", source: str = "") -> bool:
         return self.dynamic_engine.show_panel(panel_id, title, content, kind, source)
 
+    def enqueue_dynamic_panel(self, panel_id: str, title: str, content: str = "", kind: str = "info", source: str = "") -> None:
+        self.dynamic_request.emit(str(panel_id), str(title), str(content), str(kind), str(source))
+
     def remove_dynamic_panel(self, panel_id: str) -> bool:
         return self.dynamic_engine.remove_panel(panel_id)
 
+    def enqueue_remove_dynamic_panel(self, panel_id: str) -> None:
+        self.dynamic_remove_request.emit(str(panel_id))
+
     def clear_dynamic_panels(self):
         self.dynamic_engine.clear()
+
+    def enqueue_clear_dynamic_panels(self) -> None:
+        self.dynamic_clear_request.emit()
 
     def dynamic_panels(self):
         return self.dynamic_engine.snapshot()
