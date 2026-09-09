@@ -1,14 +1,13 @@
-"""J.A.R.V.I.S. NEO cockpit dashboard.
-
-A lightweight, detachable command center that sits on top of the real desktop
-HUD. It is intentionally self-contained so the legacy assistant remains safe.
-"""
+"""J.A.R.V.I.S. NEO cockpit dashboard with dynamic controls and panels."""
 from __future__ import annotations
 
 import socket
 
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import QDialog, QGridLayout, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+
+from core.cockpit_widget_engine import CockpitWidgetEngine
+from core.data_registry import get_data
 
 try:
     import psutil
@@ -22,8 +21,7 @@ class _Card(QWidget):
     def __init__(self, title: str, parent=None):
         super().__init__(parent)
         self.setStyleSheet(
-            "QWidget { background: rgba(5,15,25,235); border: 1px solid rgba(0,243,255,75); "
-            "border-radius: 10px; } QLabel { border: none; }"
+            "QWidget { background: rgba(5,15,25,235); border: 1px solid rgba(0,243,255,75); border-radius: 10px; } QLabel { border: none; }"
         )
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 10, 12, 10)
@@ -41,7 +39,7 @@ class _Card(QWidget):
 
 
 class CockpitHud(QDialog):
-    """Full detachable NEO cockpit with live system, voice and AI telemetry."""
+    """Full detachable NEO cockpit with live telemetry and dynamic panels."""
 
     def __init__(self, assistant, parent=None):
         super().__init__(parent)
@@ -49,16 +47,11 @@ class CockpitHud(QDialog):
         self.setWindowTitle("J.A.R.V.I.S. NEO // COCKPIT")
         self.setMinimumSize(920, 640)
         self.resize(1100, 720)
-        self.setWindowFlags(
-            Qt.WindowType.FramelessWindowHint
-            | Qt.WindowType.Window
-            | Qt.WindowType.WindowStaysOnTopHint
-        )
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Window | Qt.WindowType.WindowStaysOnTopHint)
         self.setStyleSheet(
             "QDialog { background:#02070c; color:#dffaff; }"
             "QLabel { color:#dffaff; }"
-            "QPushButton { background:#07151f;color:#bdefff;border:1px solid #16465a;"
-            "border-radius:7px;padding:8px 12px;font-weight:700;font-size:10px; }"
+            "QPushButton { background:#07151f;color:#bdefff;border:1px solid #16465a;border-radius:7px;padding:8px 12px;font-weight:700;font-size:10px; }"
             "QPushButton:hover { background:#0b2532;border-color:#00f3ff; }"
         )
         self._drag_pos = None
@@ -121,17 +114,15 @@ class CockpitHud(QDialog):
         activity.layout().addWidget(self.activity_label)
         middle.addWidget(activity, 2)
 
+        self.dynamic_host = _Card("Dynamic cockpit")
+        self.dynamic_engine = CockpitWidgetEngine(self.dynamic_host)
+        middle.addWidget(self.dynamic_host, 2)
+
         actions = _Card("Quick actions")
         action_layout = QGridLayout()
         action_layout.setSpacing(6)
-        for i, (label, command) in enumerate([
-            ("🌐 WEB", "recherche web"), ("📁 FILES", "ouvre explorateur de fichiers"),
-            ("🎵 MUSIC", "ouvre lecteur musique"), ("⚙ SETTINGS", "paramètres"),
-            ("🧠 AGENT", "mode agent"), ("🛡 SENTINEL", "sécurité on"),
-        ]):
-            btn = QPushButton(label)
-            btn.clicked.connect(lambda _, c=command: self._command(c))
-            action_layout.addWidget(btn, i // 2, i % 2)
+        self.action_layout = action_layout
+        self._build_actions()
         actions.layout().addLayout(action_layout)
         middle.addWidget(actions, 1)
         root.addLayout(middle, 1)
@@ -149,6 +140,22 @@ class CockpitHud(QDialog):
         bottom.addWidget(self.pin)
         root.addLayout(bottom)
 
+    def _build_actions(self):
+        configured = get_data("command_deck", None)
+        if not isinstance(configured, list) or not configured:
+            configured = get_data("ui_actions", [])
+        for i, item in enumerate(configured):
+            if not isinstance(item, dict):
+                continue
+            label = str(item.get("label", "ACTION")).strip()
+            command = str(item.get("command", "")).strip()
+            if not label or not command:
+                continue
+            btn = QPushButton(label)
+            btn.setToolTip(command)
+            btn.clicked.connect(lambda _, c=command: self._command(c))
+            self.action_layout.addWidget(btn, i // 2, i % 2)
+
     def _command(self, command: str):
         try:
             queue = getattr(self.assistant, "command_queue", None)
@@ -157,6 +164,18 @@ class CockpitHud(QDialog):
                 self.activity_label.setText(f"> {command}\nCommande envoyée au moteur NEO.")
         except Exception as exc:
             self.activity_label.setText(f"> ERREUR\n{exc}")
+
+    def show_dynamic_panel(self, panel_id: str, title: str, content: str = "", kind: str = "info", source: str = "") -> bool:
+        return self.dynamic_engine.show_panel(panel_id, title, content, kind, source)
+
+    def remove_dynamic_panel(self, panel_id: str) -> bool:
+        return self.dynamic_engine.remove_panel(panel_id)
+
+    def clear_dynamic_panels(self):
+        self.dynamic_engine.clear()
+
+    def dynamic_panels(self):
+        return self.dynamic_engine.snapshot()
 
     def _on_log(self, category, message):
         self.activity_label.setText(f"[{str(category).upper()}] {message}")
