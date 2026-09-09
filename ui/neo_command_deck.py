@@ -1,11 +1,14 @@
-"""Live command deck injected into the real J.A.R.V.I.S. NEO window."""
+"""Live command deck and dynamic cockpit panels inside J.A.R.V.I.S. NEO."""
 from __future__ import annotations
 
 import datetime
 import socket
 
-from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtWidgets import QFrame, QGridLayout, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+from PyQt6.QtCore import QTimer
+from PyQt6.QtWidgets import QFrame, QGridLayout, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
+
+from core.cockpit_widget_engine import CockpitWidgetEngine
+from core.data_registry import get_data
 
 try:
     import psutil
@@ -35,7 +38,7 @@ class _Metric(QFrame):
 
 
 class NeoCommandDeck(QFrame):
-    """Obvious, live cockpit layer inside the existing HUD, not a separate window."""
+    """Cockpit shell with configurable controls and dynamic information panels."""
 
     def __init__(self, assistant, parent=None):
         super().__init__(parent)
@@ -95,17 +98,34 @@ class NeoCommandDeck(QFrame):
             metrics.addWidget(metric, i // 3, i % 3)
         root.addLayout(metrics)
 
+        dynamic_title = QLabel("◈ DYNAMIC COCKPIT")
+        dynamic_title.setStyleSheet("color:#5f91a2;font-size:8px;font-weight:800;letter-spacing:1.4px;")
+        root.addWidget(dynamic_title)
+        self.dynamic_host = QFrame(self)
+        self.dynamic_engine = CockpitWidgetEngine(self.dynamic_host)
+        root.addWidget(self.dynamic_host)
+
         actions = QGridLayout()
         actions.setSpacing(5)
-        for i, (label, command) in enumerate((
-            ("WEB", "recherche web"), ("FILES", "ouvre explorateur de fichiers"),
-            ("SYSTEM", "processus"), ("WEATHER", "météo"), ("AGENT", "mode agent"),
-            ("SETTINGS", "paramètres"),
-        )):
-            button = QPushButton(label)
-            button.clicked.connect(lambda _, cmd=command: self._command(cmd))
-            actions.addWidget(button, i // 3, i % 3)
+        self.action_layout = actions
+        self._build_actions()
         root.addLayout(actions)
+
+    def _build_actions(self):
+        configured = get_data("command_deck", None)
+        if not isinstance(configured, list) or not configured:
+            configured = get_data("ui_actions", [])
+        for index, item in enumerate(configured):
+            if not isinstance(item, dict):
+                continue
+            label = str(item.get("label", "ACTION")).strip()
+            command = str(item.get("command", "")).strip()
+            if not label or not command:
+                continue
+            button = QPushButton(label)
+            button.setToolTip(command)
+            button.clicked.connect(lambda _, cmd=command: self._command(cmd))
+            self.action_layout.addWidget(button, index // 3, index % 3)
 
     def _command(self, command: str):
         try:
@@ -115,6 +135,18 @@ class NeoCommandDeck(QFrame):
                 self.set_activity(f"> {command}")
         except Exception as exc:
             self.set_activity(f"ERROR: {exc}")
+
+    def show_dynamic_panel(self, panel_id: str, title: str, content: str = "", kind: str = "info", source: str = "") -> bool:
+        return self.dynamic_engine.show_panel(panel_id, title, content, kind, source)
+
+    def remove_dynamic_panel(self, panel_id: str) -> bool:
+        return self.dynamic_engine.remove_panel(panel_id)
+
+    def clear_dynamic_panels(self):
+        self.dynamic_engine.clear()
+
+    def dynamic_panels(self):
+        return self.dynamic_engine.snapshot()
 
     def set_activity(self, text: str):
         clean = " ".join(str(text).split())
