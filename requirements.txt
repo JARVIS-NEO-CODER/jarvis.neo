@@ -19,5 +19,4 @@ soundfile>=0.12,<1
 fastapi>=0.115,<1
 uvicorn>=0.30,<1
 websockets>=14,<17
-piper-tts>=1.8,<2
-edge-tts>=7.0,<8
+pocket-tts>=1.0,<2
