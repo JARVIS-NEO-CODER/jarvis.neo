@@ -4,7 +4,7 @@ from __future__ import annotations
 import socket
 
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtWidgets import QDialog, QGridLayout, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QDialog, QGridLayout, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget, QScrollArea, QFrame
 
 from core.cockpit_widget_engine import CockpitWidgetEngine
 from core.data_registry import get_data
@@ -114,9 +114,20 @@ class CockpitHud(QDialog):
         activity.layout().addWidget(self.activity_label)
         middle.addWidget(activity, 2)
 
-        self.dynamic_host = _Card("Dynamic cockpit")
+        dynamic_card = _Card("Dynamic cockpit")
+        dynamic_card.setMinimumWidth(430)
+        self.dynamic_host = QWidget(dynamic_card)
+        self.dynamic_host.setStyleSheet("background:transparent;border:none;")
+        dynamic_layout = QVBoxLayout(self.dynamic_host)
+        dynamic_layout.setContentsMargins(0, 0, 0, 0)
+        scroll = QScrollArea(dynamic_card)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setWidget(self.dynamic_host)
+        dynamic_card.layout().addWidget(scroll)
         self.dynamic_engine = CockpitWidgetEngine(self.dynamic_host)
-        middle.addWidget(self.dynamic_host, 2)
+        middle.addWidget(dynamic_card, 2)
 
         actions = _Card("Quick actions")
         action_layout = QGridLayout()
