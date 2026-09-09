@@ -1,8 +1,4 @@
-"""Dynamic cockpit panels for J.A.R.V.I.S. NEO.
-
-The engine manages safe, UI-level panels. It deliberately does not execute
-arbitrary Python from configuration or AI output.
-"""
+"""Dynamic cockpit panels for J.A.R.V.I.S. NEO."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -38,11 +34,12 @@ class CockpitWidgetEngine:
     MAX_PANELS = 8
     MAX_TEXT = 4000
     MAX_SOURCE = 1000
+    MAX_IMAGE_BYTES = 5_000_000
 
     def __init__(self, host: QWidget):
         self.host = host
         self.panels: dict[str, tuple[CockpitPanel, QWidget]] = {}
-        self.layout = QVBoxLayout(host)
+        self.layout = host.layout() or QVBoxLayout(host)
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.layout.setSpacing(6)
         self.network = QNetworkAccessManager(host)
@@ -78,8 +75,7 @@ class CockpitWidgetEngine:
             self.panels[panel_id] = (panel, widget)
             return True
         if len(self.panels) >= self.MAX_PANELS:
-            oldest = next(iter(self.panels))
-            self.remove_panel(oldest)
+            self.remove_panel(next(iter(self.panels)))
         widget = QFrame(self.host)
         widget.setStyleSheet(
             "QFrame { background:rgba(0,243,255,0.035); border:1px solid rgba(0,243,255,0.20); border-radius:8px; }"
@@ -125,14 +121,18 @@ class CockpitWidgetEngine:
             view.setMinimumHeight(210)
             view.setUrl(QUrl(panel.source))
             layout.addWidget(view)
+        elif panel.kind == "web":
+            body = QLabel(f"Navigateur intégré indisponible.\n{panel.source}")
+            body.setWordWrap(True)
+            body.setStyleSheet("color:#bfefff;font-size:9px;")
+            layout.addWidget(body)
         elif panel.kind == "image":
             image = QLabel("CHARGEMENT IMAGE…")
             image.setAlignment(Qt.AlignmentFlag.AlignCenter)
             image.setMinimumHeight(130)
             image.setStyleSheet("color:#7895a5;font-size:8px;border:none;")
             layout.addWidget(image)
-            request = QNetworkRequest(QUrl(panel.source))
-            reply = self.network.get(request)
+            reply = self.network.get(QNetworkRequest(QUrl(panel.source)))
             reply.finished.connect(lambda r=reply, label=image: self._finish_image(r, label))
         else:
             body = QLabel(panel.content or "")
@@ -147,22 +147,19 @@ class CockpitWidgetEngine:
             source.setWordWrap(True)
             layout.addWidget(source)
 
-    @staticmethod
-    def _finish_image(reply, label: QLabel) -> None:
+    def _finish_image(self, reply, label: QLabel) -> None:
         try:
-            if reply.error() or len(reply.readAll()) == 0:
+            if reply.error():
                 label.setText("IMAGE INDISPONIBLE")
+                reply.deleteLater()
                 return
+            data = bytes(reply.readAll())
             reply.deleteLater()
-        except Exception:
-            try:
-                label.setText("IMAGE INDISPONIBLE")
-            except Exception:
+            if not data or len(data) > self.MAX_IMAGE_BYTES:
+                label.setText("IMAGE REFUSÉE (TAILLE)")
                 return
-        try:
-            data = reply.readAll()
             pixmap = QPixmap()
-            if pixmap.loadFromData(bytes(data)):
+            if pixmap.loadFromData(data):
                 label.setPixmap(pixmap.scaled(420, 240, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
             else:
                 label.setText("FORMAT IMAGE NON PRIS EN CHARGE")
