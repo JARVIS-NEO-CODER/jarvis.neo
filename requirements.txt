@@ -3,6 +3,7 @@
 # Whisper is intentionally optional: see requirements-voice.txt
 
 PyQt6>=6.7,<7
+PyQt6-WebEngine>=6.7,<7
 psutil>=6.0,<7
 requests>=2.32,<3
 numpy>=1.26,<3
@@ -19,3 +20,4 @@ fastapi>=0.115,<1
 uvicorn>=0.30,<1
 websockets>=14,<17
 piper-tts>=1.8,<2
+edge-tts>=7.0,<8
