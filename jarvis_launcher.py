@@ -223,6 +223,16 @@ def main() -> None:
     assistant.clear_cockpit_panels = hud.clear_dynamic_panels
     assistant.get_cockpit_panels = hud.dynamic_panels
 
+    # The cockpit runtime is deliberately attached after the HUD exists, so
+    # command/AI requests can update Qt only through the established UI bridge.
+    try:
+        from core.cockpit_runtime import CockpitRuntime
+        assistant.cockpit_runtime = CockpitRuntime(assistant)
+        assistant.cockpit_runtime.install()
+        assistant.log.info("COCKPIT: runtime dynamique connecté au moteur de commandes et à l'IA")
+    except Exception as exc:
+        assistant.log.warning(f"COCKPIT: runtime dynamique non chargé : {exc}")
+
     cfg = getattr(assistant, "CONFIG", None)
     if isinstance(cfg, dict):
         cfg["main_hud_enabled"] = True
