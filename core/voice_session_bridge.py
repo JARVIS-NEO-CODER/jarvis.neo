@@ -1,4 +1,4 @@
-"""Bridge the legacy voice worker to a reliable microphone, app resolver and TTS."""
+"""Bridge the voice worker to the application resolver and local Pocket TTS."""
 from __future__ import annotations
 
 import re
@@ -6,27 +6,16 @@ import time
 
 
 def _install_application_resolver(assistant) -> None:
-    """Replace legacy app lookup with runtime discovery for both normal and agent paths."""
     try:
         from core.application_resolver import ApplicationResolver
         tools = getattr(assistant, "tools", None)
         processor = getattr(assistant, "processor", None)
         action_engine = getattr(processor, "_neo_action_engine", None) if processor else None
-
         aliases = {
-            "calculatrice": "calc.exe",
-            "calc": "calc.exe",
-            "bloc-notes": "notepad.exe",
-            "notepad": "notepad.exe",
-            "explorateur": "explorer.exe",
-            "explorer": "explorer.exe",
-            "vscode": "code",
-            "visual studio code": "code",
-            "chrome": "chrome",
-            "google chrome": "chrome",
-            "discord": "Discord",
-            "spotify": "Spotify",
-            "steam": "steam",
+            "calculatrice": "calc.exe", "calc": "calc.exe", "bloc-notes": "notepad.exe",
+            "notepad": "notepad.exe", "explorateur": "explorer.exe", "explorer": "explorer.exe",
+            "vscode": "code", "visual studio code": "code", "chrome": "chrome",
+            "google chrome": "chrome", "discord": "Discord", "spotify": "Spotify", "steam": "steam",
         }
         resolver = ApplicationResolver(aliases)
 
@@ -40,11 +29,11 @@ def _install_application_resolver(assistant) -> None:
                 return True, f"Navigation ouverte : {app_name}"
             try:
                 match = resolver.launch(app_name)
-                if tools is not None:
-                    try:
+                try:
+                    if tools is not None:
                         tools.activity("outil", f"Lancement {app_name} via {match.source}")
-                    except Exception:
-                        pass
+                except Exception:
+                    pass
                 return True, f"{app_name} lancé."
             except FileNotFoundError:
                 return False, f"Application introuvable : '{app_name}'."
@@ -55,7 +44,6 @@ def _install_application_resolver(assistant) -> None:
             tools.open_application = open_application
             tools._neo_application_resolver = True
             tools._neo_application_resolver_instance = resolver
-
         if action_engine is not None:
             definition = getattr(action_engine, "_actions", {}).get("action.launch_app")
             if definition is not None and not getattr(action_engine, "_neo_application_resolver", False):
@@ -69,7 +57,6 @@ def _install_application_resolver(assistant) -> None:
 
 
 def _microphone_index(assistant):
-    """Return an explicitly configured input device, otherwise let Windows choose its default."""
     raw = assistant.CONFIG.get("microphone_device_index")
     if raw in (None, "", "default"):
         return None
@@ -80,27 +67,18 @@ def _microphone_index(assistant):
 
 
 def _try_direct_app_command(assistant, text: str) -> bool:
-    """Execute simple voice launch commands without sending them through the LLM planner.
-
-    This prevents commands such as 'Jarvis lance Minecraft' from being interpreted
-    as a file/path operation by the agent. Resolution remains allowlisted by the
-    ApplicationResolver and does not execute a shell command.
-    """
     normalized = str(text or "").strip()
     match = re.match(
         r"^(?:ouvre|lance|démarre|demarre|démarrer|demarrer|ouvrir)\s+(?:l['’]application\s+|l['’]app\s+)?(.+?)\s*[.!?]*$",
-        normalized,
-        flags=re.I,
+        normalized, flags=re.I,
     )
     if not match:
         return False
-
     app_name = match.group(1).strip(" \t.,!?\"'")
     if not app_name:
         return False
     try:
-        tools = getattr(assistant, "tools", None)
-        opener = getattr(tools, "open_application", None)
+        opener = getattr(getattr(assistant, "tools", None), "open_application", None)
         if not callable(opener):
             return False
         success, message = opener(app_name)
@@ -108,32 +86,29 @@ def _try_direct_app_command(assistant, text: str) -> bool:
             assistant.signals.log_msg.emit("J.A.R.V.I.S.", message)
             return True
         assistant.log.info("VOICE: lancement direct impossible pour '%s': %s", app_name, message)
-        return False
     except Exception as exc:
         assistant.log.warning("VOICE: lancement direct échoué pour '%s': %s", app_name, exc)
-        return False
+    return False
 
 
-def _install_piper_tts(assistant) -> None:
-    """Install local Piper as the primary TTS backend, independent of cloud TTS."""
+def _install_pocket_tts(assistant) -> None:
     try:
         from core.piper_tts_engine import install
         install(assistant)
     except Exception as exc:
         try:
-            assistant.log.warning(f"VOICE: Piper TTS non installé : {exc}")
+            assistant.log.error(f"VOICE: Pocket TTS indisponible : {exc}")
         except Exception:
             pass
 
 
 def install(assistant, session) -> bool:
-    """Replace the legacy passive-listening loop with session-aware behavior."""
     if getattr(assistant, "_neo_voice_session_bridge", False):
         return True
     try:
         sr = assistant.sr
         np = assistant.np
-        SOUND_OK = bool(assistant.SOUND_OK)
+        sound_ok = bool(assistant.SOUND_OK)
         speech = assistant.speech
         state = assistant.state
         signals = assistant.signals
@@ -147,7 +122,7 @@ def install(assistant, session) -> bool:
         return False
 
     _install_application_resolver(assistant)
-    _install_piper_tts(assistant)
+    _install_pocket_tts(assistant)
     device_index = _microphone_index(assistant)
 
     def enqueue_command(text: str) -> None:
@@ -174,7 +149,6 @@ def install(assistant, session) -> bool:
                 with sr.Microphone(**mic_kwargs) as source:
                     state.is_listening = True
                     signals.listening_change.emit(True)
-
                     if not calibrated:
                         recognizer.adjust_for_ambient_noise(source, duration=0.8)
                         recognizer.energy_threshold = max(120, min(recognizer.energy_threshold, 900))
@@ -184,29 +158,25 @@ def install(assistant, session) -> bool:
                             f" #{device_index}" if device_index is not None else " (périphérique Windows par défaut)",
                             int(recognizer.energy_threshold),
                         )
-
                     audio = recognizer.listen(source, timeout=4, phrase_time_limit=8)
-                    raw = np.frombuffer(audio.get_raw_data(), dtype=np.int16) if SOUND_OK else None
+                    raw = np.frombuffer(audio.get_raw_data(), dtype=np.int16) if sound_ok else None
                     if raw is not None and len(raw) > 0:
                         level = min(1.0, float(np.abs(raw).mean()) / 6000.0)
                         state.audio_level = level
                         signals.audio_level.emit(level)
-
                     text = None
                     whisper_available = bool(getattr(assistant, "WHISPER_OK", False))
-                    if (config.get("use_whisper") or whisper_available) and SOUND_OK and raw is not None:
+                    if (config.get("use_whisper") or whisper_available) and sound_ok and raw is not None:
                         try:
                             text = transcribe_audio(raw.astype(np.float32) / 32768.0, sample_rate=audio.sample_rate)
                         except Exception as exc:
-                            assistant.log.debug(f"STT Whisper indisponible, retour reconnaissance en ligne : {exc}")
+                            assistant.log.debug(f"STT Whisper indisponible : {exc}")
                     if not text:
                         text = recognizer.recognize_google(audio, language=language)
-
                     state.is_listening = False
                     signals.listening_change.emit(False)
                     if not text:
                         continue
-
                     normalized = text.strip()
                     lower = normalized.lower()
                     if state.passive_listening:
@@ -214,9 +184,7 @@ def install(assistant, session) -> bool:
                         if has_wake:
                             play_wake_chime()
                             session.start()
-                            clean_cmd = re.sub(
-                                rf"\b{re.escape(hotword)}\b", "", normalized, flags=re.I
-                            ).strip(" ,.!?")
+                            clean_cmd = re.sub(rf"\b{re.escape(hotword)}\b", "", normalized, flags=re.I).strip(" ,.!?")
                             signals.log_msg.emit("Vous (Voix)", normalized)
                             if clean_cmd:
                                 if not _try_direct_app_command(assistant, clean_cmd):
