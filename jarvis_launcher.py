@@ -1,4 +1,4 @@
-"""Stable entry point for the focused J.A.R.V.I.S. NEO command center."""
+"""Stable entry point for the J.A.R.V.I.S. NEO cockpit command center."""
 from __future__ import annotations
 
 import os
@@ -40,7 +40,6 @@ def _upgrade_voice_profile() -> None:
     cfg = getattr(assistant, "CONFIG", None)
     if not isinstance(cfg, dict):
         return
-
     current = str(cfg.get("voice", "")).strip()
     if current in {"pocket-estelle", "pocket_tts", "pocket-tts", "estelle"}:
         cfg["voice"] = "fr-FR-RemyMultilingualNeural"
@@ -49,7 +48,6 @@ def _upgrade_voice_profile() -> None:
             assistant.save_config(cfg)
         except Exception:
             pass
-
     assistant.VOICE = str(cfg.get("voice", assistant.VOICE))
 
 
@@ -58,11 +56,9 @@ def _install_independent_edge_tts() -> None:
     speech_cls = getattr(assistant, "SpeechEngine", None)
     if speech_cls is None or getattr(speech_cls, "_neo_edge_tts", False):
         return
-
     original_say = getattr(speech_cls, "_say", None)
     if original_say is None:
         return
-
     try:
         from core.tts_edge_player import speak as edge_speak
     except Exception as exc:
@@ -73,11 +69,9 @@ def _install_independent_edge_tts() -> None:
         state = getattr(assistant, "state", None)
         if state is None or not getattr(state, "voice_enabled", True) or not text:
             return
-
         voice = str(getattr(assistant, "CONFIG", {}).get("voice", "fr-FR-HenriNeural"))
         if voice.startswith("pocket") or voice in {"estelle", "pocket-tts"}:
             voice = "fr-FR-RemyMultilingualNeural"
-
         ok = await edge_speak(
             text,
             state=state,
@@ -98,7 +92,6 @@ def _start_mobile_bridge() -> None:
     try:
         import uvicorn
         from jarvis_mobile_bridge import bridge
-
         safe_actions = {
             "command", "agent", "agent.stop", "pc.volume", "pc.media", "pc.app.open",
             "pc.browser.open", "jarvis.mode.set", "pc.performance", "sync.request",
@@ -158,7 +151,6 @@ def _start_mobile_bridge() -> None:
                 command = str(args.get("command", "")).strip()
                 if not command or len(command) > 2000:
                     return {"accepted": False, "reason": "COMMAND_INVALID"}
-
             assistant.signals.log_msg.emit("Vous (Mobile)", command)
             assistant.command_queue.put(command)
             return {"accepted": True, "queued": True, "command": command}
@@ -198,16 +190,13 @@ def _start_mobile_bridge() -> None:
             name="NEO-mobile-bridge",
         ).start()
         assistant.log.info(f"MOBILE: passerelle active sur le port {bridge.port} | code: {bridge.pairing_code}")
-
         relay_url = str(os.getenv("JARVIS_REMOTE_RELAY_URL", "")).strip()
         if relay_url:
             try:
                 from jarvis_remote_client import RemoteTunnelClient
                 remote = RemoteTunnelClient(bridge, relay_url)
                 remote.start()
-                assistant.log.info(
-                    f"REMOTE: tunnel sortant actif | node_id={remote.node_id} | relais={remote.remote_url}"
-                )
+                assistant.log.info(f"REMOTE: tunnel sortant actif | node_id={remote.node_id} | relais={remote.remote_url}")
             except Exception as exc:
                 assistant.log.warning(f"REMOTE: tunnel non démarré : {exc}")
         else:
@@ -226,12 +215,18 @@ def main() -> None:
     _upgrade_voice_profile()
     _install_independent_edge_tts()
 
-    from ui.neo_main_hud_v2 import NeoMainHud
-    hud = NeoMainHud(assistant)
+    from ui.cockpit_hud import CockpitHud
+    hud = CockpitHud(assistant)
+    assistant.cockpit = hud
+    assistant.show_cockpit_panel = hud.show_dynamic_panel
+    assistant.remove_cockpit_panel = hud.remove_dynamic_panel
+    assistant.clear_cockpit_panels = hud.clear_dynamic_panels
+    assistant.get_cockpit_panels = hud.dynamic_panels
 
     cfg = getattr(assistant, "CONFIG", None)
     if isinstance(cfg, dict):
         cfg["main_hud_enabled"] = True
+        cfg["cockpit_enabled"] = True
         try:
             assistant.save_config(cfg)
         except Exception:
@@ -248,7 +243,6 @@ def main() -> None:
 
     QTimer.singleShot(0, _start_core_workers)
     QTimer.singleShot(500, _start_mobile_bridge)
-
     sys.exit(app.exec())
 
 
