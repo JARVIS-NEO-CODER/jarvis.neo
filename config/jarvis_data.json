@@ -27,6 +27,14 @@
     "bureau": "Desktop",
     "images": "Pictures"
   },
+  "command_deck": [
+    {"id": "web", "label": "WEB", "command": "recherche web"},
+    {"id": "files", "label": "FILES", "command": "ouvre explorateur de fichiers"},
+    {"id": "system", "label": "SYSTEM", "command": "processus"},
+    {"id": "weather", "label": "WEATHER", "command": "météo"},
+    {"id": "agent", "label": "AGENT", "command": "mode agent"},
+    {"id": "settings", "label": "SETTINGS", "command": "paramètres"}
+  ],
   "ui_actions": [
     {"label": "MÉTÉO", "command": "météo"},
     {"label": "TÂCHES", "command": "mes tâches"},
