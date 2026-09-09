@@ -31,7 +31,8 @@ class CockpitRuntime:
         if hud is None:
             return False
         try:
-            return bool(hud.show_dynamic_panel(panel_id, title, content, kind, source))
+            hud.enqueue_dynamic_panel(panel_id, title, content, kind, source)
+            return True
         except Exception:
             return False
 
@@ -40,7 +41,8 @@ class CockpitRuntime:
         if hud is None:
             return False
         try:
-            return bool(hud.remove_dynamic_panel(panel_id))
+            hud.enqueue_remove_dynamic_panel(panel_id)
+            return True
         except Exception:
             return False
 
@@ -49,7 +51,7 @@ class CockpitRuntime:
         if hud is None:
             return False
         try:
-            hud.clear_dynamic_panels()
+            hud.enqueue_clear_dynamic_panels()
             return True
         except Exception:
             return False
