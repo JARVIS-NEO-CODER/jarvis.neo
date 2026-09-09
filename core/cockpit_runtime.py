@@ -6,6 +6,7 @@ import re
 from functools import wraps
 from urllib.parse import quote, urlparse
 
+from .conversation_ai import ConversationAI
 from .web_search import WebSearchProvider
 
 
@@ -20,7 +21,6 @@ class CockpitRuntime:
         self.search = WebSearchProvider(timeout=6)
         self._installed = False
         self._original_process = None
-        self._original_chat = None
 
     @property
     def hud(self):
@@ -75,17 +75,10 @@ class CockpitRuntime:
             return self.show("web-search", f"RECHERCHE · {query}", f"Recherche indisponible : {exc}", "notification")
         shown = False
         for index, result in enumerate(results, 1):
-            shown = self.show(
-                f"web-{index}",
-                result.title,
-                result.snippet,
-                "web",
-                result.url,
-            ) or shown
+            shown = self.show(f"web-{index}", result.title, result.snippet, "web", result.url) or shown
         return shown
 
     def handle_directive(self, text):
-        """Handle explicit cockpit-oriented requests before/alongside legacy intents."""
         raw = str(text).strip()
         low = raw.lower()
         if not raw:
@@ -127,9 +120,8 @@ class CockpitRuntime:
             return response
         clean = response
         for match in list(_MARKER.finditer(response)):
-            raw = match.group(1)
             try:
-                spec = json.loads(raw)
+                spec = json.loads(match.group(1))
             except Exception:
                 continue
             if not isinstance(spec, dict):
@@ -160,21 +152,14 @@ class CockpitRuntime:
 
             @wraps(self._original_process)
             def wrapped_process(text):
-                runtime.handle_directive(text)
+                if runtime.handle_directive(text):
+                    return "Affichage dynamique mis à jour dans le cockpit."
                 result = runtime._original_process(text)
                 runtime.enrich_common_request(text)
                 return result
 
             processor.process = wrapped_process
-
-            self._original_chat = None
-            try:
-                conversation_cls = type(getattr(processor, "conversation_ai", None)) if getattr(processor, "conversation_ai", None) else None
-                if conversation_cls is not None and hasattr(conversation_cls, "chat"):
-                    self._patch_chat(conversation_cls)
-            except Exception:
-                pass
-
+        self._patch_chat(ConversationAI)
         self._installed = True
 
     def _patch_chat(self, conversation_cls):
