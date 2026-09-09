@@ -14,7 +14,7 @@ _MARKER = re.compile(r"NEO_PANEL\s*(\{.*?\})", re.IGNORECASE | re.DOTALL)
 
 
 class CockpitRuntime:
-    """Safe bridge that lets commands and the conversational AI request UI panels."""
+    """Safe bridge that lets commands and conversational AI request UI panels."""
 
     def __init__(self, assistant):
         self.assistant = assistant
@@ -72,7 +72,7 @@ class CockpitRuntime:
             url = f"https://www.google.com/search?tbm=isch&q={quote(query)}"
             return self.show("image-search", f"IMAGES · {query}", kind="web", source=url)
         try:
-            results = self.search.search(query, limit=3)
+            results = self.search.search(query, limit=2)
         except Exception as exc:
             return self.show("web-search", f"RECHERCHE · {query}", f"Recherche indisponible : {exc}", "notification")
         shown = False
@@ -106,12 +106,13 @@ class CockpitRuntime:
         """Add useful cockpit panels while keeping applications in their own windows."""
         low = str(text).lower()
         shown = False
-        if "météo" in low or "meteo" in low:
+        weather = "météo" in low or "meteo" in low
+        if weather:
             city_match = re.search(r"météo\s+(?:de|à|a|pour)\s+([\wÀ-ÿ' -]{2,60})", text, re.I)
             city = city_match.group(1).strip() if city_match else "Paris"
             url = f"https://www.google.com/search?q={quote('météo ' + city)}"
             shown = self.show("weather", f"MÉTÉO · {city}", kind="web", source=url) or shown
-        if re.search(r"\b(?:cherche|recherche|trouve)\b", low) and "web" not in low:
+        if not weather and re.search(r"\b(?:cherche|recherche|trouve)\b", low) and "web" not in low:
             query = re.sub(r".*?\b(?:cherche|recherche|trouve)\b\s*", "", text, count=1, flags=re.I).strip()
             if query and len(query) <= 180:
                 shown = self._show_search_results(query) or shown
