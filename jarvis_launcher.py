@@ -15,6 +15,16 @@ def _start_core_workers():
             try: assistant.log.warning(f"Service NEO non lancé : {exc}")
             except Exception: pass
 
+def _start_presence():
+    try:
+        from core.presence_engine import PresenceEngine
+        assistant.presence=PresenceEngine(assistant)
+        assistant.presence.start()
+        assistant.log.info("PRESENCE: moteur proactif connecté | IA locale prioritaire")
+    except Exception as exc:
+        try: assistant.log.warning(f"PRESENCE: moteur non démarré : {exc}")
+        except Exception: pass
+
 def _install_pocket_voice():
     """Install the local French neural voice before any response is spoken."""
     try:
@@ -95,11 +105,14 @@ def main():
     except Exception as exc: assistant.log.warning(f"COCKPIT: runtime dynamique non chargé : {exc}")
     cfg=getattr(assistant,"CONFIG",None)
     if isinstance(cfg,dict):
+        cfg.setdefault("presence_active", True)
+        cfg.setdefault("presence_cloud_modes", ["cloud", "agent"])
+        cfg.setdefault("presence_local_model", cfg.get("model", "llama3.2:3b"))
         cfg["main_hud_enabled"]=True; cfg["cockpit_enabled"]=True
         try: assistant.save_config(cfg)
         except Exception: pass
     hud.show(); hud.raise_(); hud.activateWindow()
     try: assistant.speech.say("Centre de commande NEO en ligne.")
     except Exception: pass
-    QTimer.singleShot(0,_start_core_workers); QTimer.singleShot(500,_start_mobile_bridge); sys.exit(app.exec())
+    QTimer.singleShot(0,_start_core_workers); QTimer.singleShot(200,_start_presence); QTimer.singleShot(500,_start_mobile_bridge); sys.exit(app.exec())
 if __name__=="__main__": main()
