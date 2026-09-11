@@ -20,7 +20,7 @@ class Reactor(QWidget):
         p=QPainter(self); p.setRenderHint(QPainter.RenderHint.Antialiasing); c=QPointF(self.width()/2,self.height()/2); r=min(self.width(),self.height())/2-14; color=GREEN if self.status in {"LISTENING","SPEAKING"} else CYAN
         p.setBrush(QBrush(QColor(4,18,31,210))); p.setPen(Qt.PenStyle.NoPen); p.drawEllipse(c,r-18,r-18)
         for i in range(24):
-            p.save(); p.translate(c); p.rotate(i*15); p.setPen(QPen(QColor(color.red(),color.green(),color.blue(),100),1.2)); p.drawLine(0,-r,0,-r+(10 if i%3==0 else 5)); p.restore()
+            p.save(); p.translate(c); p.rotate(i*15); p.setPen(QPen(QColor(color.red(),color.green(),color.blue(),100),1.2)); p.drawLine(QPointF(0,-r),QPointF(0,-r+(10 if i%3==0 else 5))); p.restore()
         for rr,alpha in ((r-8,35),(r-27,65),(r-48,110)):
             p.setPen(QPen(QColor(color.red(),color.green(),color.blue(),alpha),1.5)); p.setBrush(Qt.BrushStyle.NoBrush); p.drawEllipse(c,rr,rr)
         p.save(); p.translate(c); p.rotate(self.angle); p.setPen(QPen(color,2)); p.drawRoundedRect(-31,-31,62,62,14,14); p.drawLine(-49,0,-35,0); p.drawLine(35,0,49,0); p.restore()
@@ -43,47 +43,3 @@ class CockpitHud(QDialog):
         center=QFrame(); center.setStyleSheet(panel_style()); cl=QVBoxLayout(center); cl.setContentsMargins(12,12,12,12); title=QLabel("DYNAMIC INTELLIGENCE"); title.setStyleSheet("color:#7895A5;font-size:9px;font-weight:800;letter-spacing:1.7px;"); cl.addWidget(title); self.dynamic_host=QWidget(); self.dynamic_host.setStyleSheet("background:transparent;border:none;"); dl=QVBoxLayout(self.dynamic_host); dl.setContentsMargins(0,0,0,0); dl.setSpacing(8); dl.addStretch(); scroll=QScrollArea(); scroll.setWidgetResizable(True); scroll.setWidget(self.dynamic_host); cl.addWidget(scroll,1); body.addWidget(center,3); self.dynamic_engine=CockpitWidgetEngine(self.dynamic_host)
         right=QFrame(); right.setStyleSheet(panel_style()); rl=QVBoxLayout(right); rl.setContentsMargins(12,12,12,12); q=QLabel("COMMAND DECK"); q.setStyleSheet("color:#7895A5;font-size:9px;font-weight:800;letter-spacing:1.7px;"); rl.addWidget(q); self.action_layout=QGridLayout(); self.action_layout.setSpacing(6); rl.addLayout(self.action_layout); self._build_actions(); activity_title=QLabel("LIVE FEED"); activity_title.setStyleSheet("color:#7895A5;font-size:9px;font-weight:800;letter-spacing:1.7px;margin-top:10px;"); rl.addWidget(activity_title); self.activity_label=QLabel("› Core initialized\n› Dynamic cockpit ready\n› Waiting for directive"); self.activity_label.setStyleSheet("color:#9BB4BF;font-family:Consolas;font-size:9px;"); self.activity_label.setWordWrap(True); rl.addWidget(self.activity_label); rl.addStretch(); body.addWidget(right,1); root.addLayout(body,1)
         footer=QHBoxLayout()
-        for text,slot in (("COMPACT",self._compact),("NORMAL",self._normal),("CLEAR PANELS",self.clear_dynamic_panels),("REFRESH",self.refresh)):
-            b=QPushButton(text); b.clicked.connect(slot); footer.addWidget(b)
-        footer.addStretch(); self.pin=QPushButton("PIN"); self.pin.setCheckable(True); self.pin.setChecked(True); self.pin.clicked.connect(self._toggle_pin); footer.addWidget(self.pin); root.addLayout(footer)
-    def _build_actions(self):
-        configured=get_data("command_deck",None)
-        if not isinstance(configured,list) or not configured: configured=get_data("ui_actions",[])
-        for i,item in enumerate(configured):
-            if not isinstance(item,dict): continue
-            label,command=str(item.get("label","")).strip(),str(item.get("command","")).strip()
-            if not label or not command: continue
-            b=QPushButton(label); b.setToolTip(command); b.clicked.connect(lambda _,c=command:self._command(c)); self.action_layout.addWidget(b,i//2,i%2)
-    def _command(self,command):
-        try:
-            queue=getattr(self.assistant,"command_queue",None)
-            if queue is not None: queue.put(command); self._on_log("COMMAND",command)
-        except Exception as exc: self._on_log("ERROR",str(exc))
-    def show_dynamic_panel(self,panel_id,title,content="",kind="info",source=""): return self.dynamic_engine.show_panel(panel_id,title,content,kind,source)
-    def enqueue_dynamic_panel(self,panel_id,title,content="",kind="info",source=""): self.dynamic_request.emit(str(panel_id),str(title),str(content),str(kind),str(source))
-    def remove_dynamic_panel(self,panel_id): return self.dynamic_engine.remove_panel(panel_id)
-    def enqueue_remove_dynamic_panel(self,panel_id): self.dynamic_remove_request.emit(str(panel_id))
-    def clear_dynamic_panels(self): self.dynamic_engine.clear()
-    def enqueue_clear_dynamic_panels(self): self.dynamic_clear_request.emit()
-    def dynamic_panels(self): return self.dynamic_engine.snapshot()
-    def _on_log(self,category,message): self.activity_label.setText(f"[{str(category).upper()}] {message}")
-    def _toggle_pin(self):
-        flags=self.windowFlags(); flags=flags|Qt.WindowType.WindowStaysOnTopHint if self.pin.isChecked() else flags&~Qt.WindowType.WindowStaysOnTopHint; self.setWindowFlags(flags); self.show()
-    def _compact(self): self.resize(900,560)
-    def _normal(self): self.resize(1240,780)
-    def refresh(self):
-        cpu=ram=disk=0
-        if psutil:
-            try: cpu,ram,disk=psutil.cpu_percent(),psutil.virtual_memory().percent,psutil.disk_usage('/').percent
-            except Exception: pass
-        self.metrics["CPU"].set_value(cpu); self.metrics["RAM"].set_value(ram); self.metrics["DISK"].set_value(disk)
-        try: socket.create_connection(("1.1.1.1",53),timeout=.15).close(); net=100
-        except Exception: net=0
-        self.metrics["NETWORK"].set_value(net); state=getattr(self.assistant,"state",None); processor=getattr(self.assistant,"processor",None); config=getattr(self.assistant,"CONFIG",{}) or {}; conversation=getattr(processor,"conversation_ai",None) if processor else None; status=getattr(conversation,"status",{}) if conversation else {}; provider=str(status.get("active_provider") or config.get("ai_provider","ollama")).upper(); model=str(config.get("groq_model" if provider=="GROQ" else "model","--")); self.ai_label.setText(f"AI CORE  /  {provider}  /  {model}"); listening=bool(getattr(state,"is_listening",False)) if state else False; speaking=bool(getattr(state,"is_speaking",False)) if state else False; voice="LISTENING" if listening else "SPEAKING" if speaking else "ONLINE"; self.reactor.set_status(voice); self.status.setText(f"● {voice}"); self.mode.setText("AGENT" if bool(getattr(processor,"_neo_agent_mode",False)) else "NORMAL")
-    def mousePressEvent(self,event):
-        if event.button()==Qt.MouseButton.LeftButton: self._drag_pos=event.globalPosition().toPoint()-self.frameGeometry().topLeft()
-        super().mousePressEvent(event)
-    def mouseMoveEvent(self,event):
-        if self._drag_pos is not None and event.buttons()&Qt.MouseButton.LeftButton: self.move(event.globalPosition().toPoint()-self._drag_pos)
-        super().mouseMoveEvent(event)
-    def mouseReleaseEvent(self,event): self._drag_pos=None; super().mouseReleaseEvent(event)
