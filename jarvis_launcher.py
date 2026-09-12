@@ -10,7 +10,15 @@ def _start_core_workers():
     for worker in workers:
         try:
             target=(lambda w=worker:w(assistant)) if worker is voice_runtime.run else worker
-            threading.Thread(target=target,daemon=True,name=f"NEO-{worker.__name__}").start()
+            def runner(fn=target,name=worker.__name__):
+                try:
+                    assistant.log.info(f"CORE: worker {name} démarré")
+                    fn()
+                    assistant.log.warning(f"CORE: worker {name} s'est arrêté")
+                except Exception as exc:
+                    try: assistant.log.exception(f"CORE: worker {name} a planté: {exc}")
+                    except Exception: pass
+            threading.Thread(target=runner,daemon=True,name=f"NEO-{worker.__name__}").start()
         except Exception as exc:
             try: assistant.log.warning(f"Service NEO non lancé : {exc}")
             except Exception: pass
