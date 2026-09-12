@@ -43,16 +43,14 @@ def _dispatch_voice_command(assistant, text: str) -> None:
 
 
 def run(assistant) -> None:
-    """Persistent microphone worker with diagnostics and reconnect handling."""
+    """Persistent microphone worker without a pre-STT energy threshold."""
     recognizer = sr.Recognizer()
-    recognizer.energy_threshold = 300
-    recognizer.dynamic_energy_threshold = True
-    recognizer.dynamic_energy_adjustment_damping = 0.15
-    recognizer.dynamic_energy_ratio = 1.5
-    recognizer.pause_threshold = 0.75
-    recognizer.phrase_threshold = 0.25
-    recognizer.non_speaking_duration = 0.35
     device_reported = False
+    try:
+        record_duration = float(assistant.CONFIG.get("voice_record_duration", 6.0))
+    except (TypeError, ValueError):
+        record_duration = 6.0
+    record_duration = max(1.0, min(12.0, record_duration))
 
     while True:
         if not bool(getattr(assistant.state, "mic_enabled", True)):
@@ -77,8 +75,6 @@ def run(assistant) -> None:
                 if not device_reported:
                     _log(assistant, "périphériques audio détectés: " + " | ".join(f"[{i}] {name}" for i, name in enumerate(names)))
                     device_reported = True
-                recognizer.adjust_for_ambient_noise(mic, duration=0.8)
-                _log(assistant, f"seuil audio: {recognizer.energy_threshold:.0f}")
 
                 while bool(getattr(assistant.state, "mic_enabled", True)):
                     if assistant.state.is_processing or assistant.state.is_speaking:
@@ -87,10 +83,12 @@ def run(assistant) -> None:
 
                     try:
                         _set_listening(assistant, True)
-                        _log(assistant, "écoute active")
-                        audio = recognizer.listen(mic, timeout=2.0, phrase_time_limit=7.0)
-                    except sr.WaitTimeoutError:
+                        _log(assistant, f"capture audio ({record_duration:.1f}s)")
+                        audio = recognizer.record(mic, duration=record_duration)
+                    except Exception as exc:
                         _set_listening(assistant, False)
+                        _log(assistant, f"capture audio impossible: {exc}")
+                        time.sleep(0.5)
                         continue
 
                     _set_listening(assistant, False)
@@ -123,7 +121,7 @@ def run(assistant) -> None:
                         try:
                             text = recognizer.recognize_google(audio, language=assistant.LANGUAGE)
                         except sr.UnknownValueError:
-                            _log(assistant, "audio reçu mais parole non comprise")
+                            _log(assistant, "STT: aucune parole reconnue dans la capture")
                             continue
                         except sr.RequestError as exc:
                             _log(assistant, f"reconnaissance Google indisponible: {exc}")
