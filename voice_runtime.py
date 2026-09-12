@@ -22,12 +22,7 @@ def _log(assistant, message: str) -> None:
 
 
 def run(assistant) -> None:
-    """Persistent microphone worker with reconnect and explicit diagnostics.
-
-    The legacy worker reopened and recalibrated the microphone on every phrase.
-    This version keeps one input stream open, reconnects on device errors and
-    uses the configured SpeechRecognition/PyAudio default device.
-    """
+    """Persistent microphone worker with diagnostics and reconnect handling."""
     recognizer = sr.Recognizer()
     recognizer.energy_threshold = 300
     recognizer.dynamic_energy_threshold = True
@@ -36,6 +31,7 @@ def run(assistant) -> None:
     recognizer.pause_threshold = 0.75
     recognizer.phrase_threshold = 0.25
     recognizer.non_speaking_duration = 0.35
+    device_reported = False
 
     while True:
         if not bool(getattr(assistant.state, "mic_enabled", True)):
@@ -48,12 +44,18 @@ def run(assistant) -> None:
             if not names:
                 raise RuntimeError("Aucun périphérique microphone détecté par PyAudio")
 
-            # Optional explicit device selection, otherwise Windows/PyAudio default.
             configured_index = assistant.CONFIG.get("microphone_device_index")
             index = int(configured_index) if configured_index not in (None, "", "default") else None
+            if index is not None and not (0 <= index < len(names)):
+                raise RuntimeError(f"Index microphone invalide: {index}. Périphériques disponibles: {len(names)}")
+
             source = sr.Microphone(device_index=index)
             with source as mic:
-                _log(assistant, f"microphone prêt: {names[index] if index is not None and index < len(names) else 'périphérique par défaut'}")
+                selected_name = names[index] if index is not None else "périphérique par défaut Windows"
+                _log(assistant, f"microphone prêt: {selected_name}")
+                if not device_reported:
+                    _log(assistant, "périphériques audio détectés: " + " | ".join(f"[{i}] {name}" for i, name in enumerate(names)))
+                    device_reported = True
                 recognizer.adjust_for_ambient_noise(mic, duration=0.8)
                 _log(assistant, f"seuil audio: {recognizer.energy_threshold:.0f}")
 
@@ -64,12 +66,27 @@ def run(assistant) -> None:
 
                     try:
                         _set_listening(assistant, True)
-                        audio = recognizer.listen(mic, timeout=2.0, phrase_time_limit=8.0)
+                        audio = recognizer.listen(mic, timeout=2.0, phrase_time_limit=7.0)
                     except sr.WaitTimeoutError:
                         _set_listening(assistant, False)
                         continue
 
                     _set_listening(assistant, False)
+                    try:
+                        raw_audio = audio.get_raw_data()
+                        if raw_audio:
+                            import numpy as np
+                            samples = np.frombuffer(raw_audio, dtype=np.int16)
+                            if samples.size:
+                                level = float(np.sqrt(np.mean(samples.astype(np.float32) ** 2)) / 32768.0)
+                                assistant.state.audio_level = min(1.0, level * 8.0)
+                                try:
+                                    assistant.signals.audio_level.emit(assistant.state.audio_level)
+                                except Exception:
+                                    pass
+                    except Exception:
+                        pass
+
                     text = None
                     try:
                         if assistant.CONFIG.get("use_whisper") and getattr(assistant, "SOUND_OK", False):
@@ -83,6 +100,7 @@ def run(assistant) -> None:
                         try:
                             text = recognizer.recognize_google(audio, language=assistant.LANGUAGE)
                         except sr.UnknownValueError:
+                            _log(assistant, "audio reçu mais parole non comprise")
                             continue
                         except sr.RequestError as exc:
                             _log(assistant, f"reconnaissance Google indisponible: {exc}")
@@ -90,17 +108,18 @@ def run(assistant) -> None:
 
                     if not text:
                         continue
-                    text_lower = text.lower().strip()
+                    text = str(text).strip()
+                    text_lower = text.lower()
                     _log(assistant, f"entendu: {text}")
 
                     if getattr(assistant.state, "passive_listening", True):
                         hotword = str(getattr(assistant, "HOTWORD", "jarvis")).lower().strip()
-                        if hotword and hotword in text_lower:
+                        if hotword and re.search(rf"\b{re.escape(hotword)}\b", text_lower):
                             try:
                                 assistant.play_wake_chime()
                             except Exception:
                                 pass
-                            clean_cmd = re.sub(rf"\b{re.escape(hotword)}\b", "", text_lower).strip()
+                            clean_cmd = re.sub(rf"\b{re.escape(hotword)}\b", "", text_lower, count=1).strip()
                             try:
                                 assistant.signals.log_msg.emit("Vous (Voix)", text)
                             except Exception:
@@ -112,6 +131,8 @@ def run(assistant) -> None:
                                     assistant.speech.say("À vos ordres, monsieur.")
                                 except Exception:
                                     pass
+                        else:
+                            _log(assistant, f"parole ignorée: mot d'activation absent ({hotword or 'aucun'})")
                     else:
                         try:
                             assistant.signals.log_msg.emit("Vous (Voix)", text)
