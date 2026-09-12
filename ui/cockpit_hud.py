@@ -55,17 +55,21 @@ class CockpitHud(QDialog):
         self._header_widgets=[brand,subtitle,self.status,self.mode,close]
         self.mini_reactor=Reactor(self); self.mini_reactor.setMinimumSize(0,0); self.mini_reactor.setFixedSize(190,190); self.mini_reactor.clicked.connect(self._restore_from_reactor); self.mini_reactor.hide()
     def _build_actions(self):
-        configured=get_data("command_deck",None)
-        if not isinstance(configured,list) or not configured: configured=get_data("ui_actions",[])
-        for i,item in enumerate(configured):
-            if not isinstance(item,dict): continue
-            label,command=str(item.get("label","")).strip(),str(item.get("command","")).strip()
-            if not label or not command: continue
+        actions=[
+            ("WEB", "cherche actualités IA"),
+            ("FILES", "ouvre explorateur"),
+            ("SYSTEM", "processus"),
+            ("WEATHER", "météo"),
+            ("MODEL", "quel modèle"),
+            ("HELP", "aide"),
+        ]
+        for i,(label,command) in enumerate(actions):
             b=QPushButton(label); b.setToolTip(command); b.clicked.connect(lambda _,c=command:self._command(c)); self.action_layout.addWidget(b,i//2,i%2)
     def _command(self,command):
         try:
             queue=getattr(self.assistant,"command_queue",None)
-            if queue is not None: queue.put(command); self._on_log("COMMAND",command)
+            if queue is None: raise RuntimeError("file de commandes indisponible")
+            queue.put(str(command)); self._on_log("COMMAND",str(command))
         except Exception as exc: self._on_log("ERROR",str(exc))
     def _minimize_to_reactor(self):
         if self._mini_mode: return
@@ -87,8 +91,12 @@ class CockpitHud(QDialog):
     def _on_log(self,category,message): self.activity_label.setText(f"[{str(category).upper()}] {message}")
     def _toggle_pin(self):
         flags=self.windowFlags(); flags=flags|Qt.WindowType.WindowStaysOnTopHint if self.pin.isChecked() else flags&~Qt.WindowType.WindowStaysOnTopHint; self.setWindowFlags(flags); self.show()
-    def _compact(self): self.resize(900,560)
-    def _normal(self): self.resize(1240,780)
+    def _compact(self): self.setFixedSize(900,560); self._center_on_available_screen(900,560)
+    def _normal(self): self.setFixedSize(1240,780); self._center_on_available_screen(1240,780)
+    def _center_on_available_screen(self,width,height):
+        screen=self.screen() or self.windowHandle().screen() if self.windowHandle() else None
+        if screen is None: return
+        area=screen.availableGeometry(); width=min(width,max(320,area.width()-30)); height=min(height,max(240,area.height()-30)); self.setFixedSize(width,height); self.move(area.center().x()-width//2,area.center().y()-height//2)
     def refresh(self):
         cpu=ram=disk=0
         if psutil:
