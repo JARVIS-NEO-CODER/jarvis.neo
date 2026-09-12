@@ -21,6 +21,27 @@ def _log(assistant, message: str) -> None:
         pass
 
 
+def _looks_like_command(text: str) -> bool:
+    """Accept obvious directives even when the wake word was missed."""
+    prefixes = (
+        "ouvre ", "ferme ", "cherche ", "météo", "quelle heure", "quelle est l'heure",
+        "processus", "performance", "stats", "batterie", "uptime", "aide", "help",
+        "quel modèle", "modèle actuel", "mode ", "volume ", "copie ", "note ",
+        "navigue ", "va sur ", "rappelle-moi ", "mes tâches", "mes mémos", "mon agenda",
+        "whisper ", "écoute passive ", "sécurité ", "capture", "screenshot",
+    )
+    return text.startswith(prefixes)
+
+
+def _dispatch_voice_command(assistant, text: str) -> None:
+    try:
+        assistant.signals.log_msg.emit("Vous (Voix)", text)
+    except Exception:
+        pass
+    assistant.command_queue.put(text)
+    _log(assistant, f"commande vocale envoyée: {text}")
+
+
 def run(assistant) -> None:
     """Persistent microphone worker with diagnostics and reconnect handling."""
     recognizer = sr.Recognizer()
@@ -66,6 +87,7 @@ def run(assistant) -> None:
 
                     try:
                         _set_listening(assistant, True)
+                        _log(assistant, "écoute active")
                         audio = recognizer.listen(mic, timeout=2.0, phrase_time_limit=7.0)
                     except sr.WaitTimeoutError:
                         _set_listening(assistant, False)
@@ -80,12 +102,13 @@ def run(assistant) -> None:
                             if samples.size:
                                 level = float(np.sqrt(np.mean(samples.astype(np.float32) ** 2)) / 32768.0)
                                 assistant.state.audio_level = min(1.0, level * 8.0)
+                                _log(assistant, f"audio reçu | niveau={assistant.state.audio_level:.2f}")
                                 try:
                                     assistant.signals.audio_level.emit(assistant.state.audio_level)
                                 except Exception:
                                     pass
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        _log(assistant, f"diagnostic audio indisponible: {exc}")
 
                     text = None
                     try:
@@ -104,7 +127,11 @@ def run(assistant) -> None:
                             continue
                         except sr.RequestError as exc:
                             _log(assistant, f"reconnaissance Google indisponible: {exc}")
-                            continue
+                            try:
+                                text = recognizer.recognize_sphinx(audio, language="fr-FR")
+                                _log(assistant, "fallback Sphinx utilisé")
+                            except Exception:
+                                continue
 
                     if not text:
                         continue
@@ -120,25 +147,21 @@ def run(assistant) -> None:
                             except Exception:
                                 pass
                             clean_cmd = re.sub(rf"\b{re.escape(hotword)}\b", "", text_lower, count=1).strip()
-                            try:
-                                assistant.signals.log_msg.emit("Vous (Voix)", text)
-                            except Exception:
-                                pass
                             if clean_cmd:
-                                assistant.command_queue.put(clean_cmd)
+                                _dispatch_voice_command(assistant, clean_cmd)
                             else:
                                 try:
+                                    assistant.signals.log_msg.emit("Vous (Voix)", text)
                                     assistant.speech.say("À vos ordres, monsieur.")
                                 except Exception:
                                     pass
+                        elif _looks_like_command(text_lower):
+                            _log(assistant, "mot d'activation absent, mais directive reconnue")
+                            _dispatch_voice_command(assistant, text_lower)
                         else:
                             _log(assistant, f"parole ignorée: mot d'activation absent ({hotword or 'aucun'})")
                     else:
-                        try:
-                            assistant.signals.log_msg.emit("Vous (Voix)", text)
-                        except Exception:
-                            pass
-                        assistant.command_queue.put(text)
+                        _dispatch_voice_command(assistant, text)
 
         except Exception as exc:
             _set_listening(assistant, False)
