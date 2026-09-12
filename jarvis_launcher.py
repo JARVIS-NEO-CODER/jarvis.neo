@@ -5,23 +5,83 @@ from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QApplication
 import assistant,sitecustomize,voice_runtime
 
-def _start_core_workers():
-    workers=(assistant.command_worker,voice_runtime.run,assistant.reminder_worker,assistant.run_web_server,assistant.security_worker,assistant.system_monitor_worker,assistant.retro_vision_worker)
-    for worker in workers:
+
+def _run_command_direct(command: str) -> None:
+    """Execute a cockpit command independently of the queue worker.
+
+    The normal queue remains the path for voice/mobile/text commands. Cockpit
+    action buttons use this guarded path so a stalled queue worker cannot make
+    the visible controls appear dead.
+    """
+    command = str(command).strip()
+    if not command:
+        return
+    try:
+        assistant.signals.log_msg.emit("Vous (Cockpit)", command)
+        assistant.state.abort_requested = False
+        assistant.state.is_processing = True
+        response = assistant.processor.process(command)
+        if not assistant.state.abort_requested:
+            assistant.memory.add_message("user", command)
+            assistant.memory.add_message("assistant", response)
+            assistant.signals.log_msg.emit("Jarvis", response)
+            assistant.speech.say(response)
+    except Exception as exc:
+        assistant.log.exception("COCKPIT: commande '%s' en erreur: %s", command, exc)
+        assistant.signals.log_msg.emit("J.A.R.V.I.S.", f"Erreur de commande : {exc}")
+    finally:
+        assistant.state.is_processing = False
+        assistant.state.abort_requested = False
+
+
+def _install_cockpit_command_handler(CockpitHud):
+    """Bind cockpit buttons to a worker-independent command executor."""
+    def cockpit_command(self, command):
         try:
-            target=(lambda w=worker:w(assistant)) if worker is voice_runtime.run else worker
-            def runner(fn=target,name=worker.__name__):
-                try:
-                    assistant.log.info(f"CORE: worker {name} démarré")
-                    fn()
-                    assistant.log.warning(f"CORE: worker {name} s'est arrêté")
-                except Exception as exc:
-                    try: assistant.log.exception(f"CORE: worker {name} a planté: {exc}")
-                    except Exception: pass
-            threading.Thread(target=runner,daemon=True,name=f"NEO-{worker.__name__}").start()
+            self._on_log("COMMAND", str(command))
+            threading.Thread(
+                target=_run_command_direct,
+                args=(str(command),),
+                daemon=True,
+                name="NEO-cockpit-command",
+            ).start()
         except Exception as exc:
-            try: assistant.log.warning(f"Service NEO non lancé : {exc}")
-            except Exception: pass
+            self._on_log("ERROR", str(exc))
+    CockpitHud._command = cockpit_command
+
+
+def _start_core_workers():
+    workers=(
+        ("command_worker", assistant.command_worker, ()),
+        ("voice_runtime", voice_runtime.run, (assistant,)),
+        ("reminder_worker", assistant.reminder_worker, ()),
+        ("run_web_server", assistant.run_web_server, ()),
+        ("security_worker", assistant.security_worker, ()),
+        ("system_monitor_worker", assistant.system_monitor_worker, ()),
+        ("retro_vision_worker", assistant.retro_vision_worker, ()),
+    )
+    assistant._neo_core_threads = {}
+    for name, worker, args in workers:
+        def runner(fn=worker, fn_args=args, worker_name=name):
+            try:
+                assistant.log.info(f"CORE: worker {worker_name} démarré")
+                fn(*fn_args)
+                assistant.log.warning(f"CORE: worker {worker_name} s'est arrêté")
+            except Exception as exc:
+                try:
+                    assistant.log.exception(f"CORE: worker {worker_name} a planté: {exc}")
+                except Exception:
+                    pass
+        try:
+            thread=threading.Thread(target=runner,daemon=True,name=f"NEO-{name}")
+            thread.start()
+            assistant._neo_core_threads[name]=thread
+        except Exception as exc:
+            try:
+                assistant.log.warning(f"CORE: worker {name} non lancé : {exc}")
+            except Exception:
+                pass
+
 
 def _start_presence():
     try:
@@ -33,6 +93,7 @@ def _start_presence():
         try: assistant.log.warning(f"PRESENCE: moteur non démarré : {exc}")
         except Exception: pass
 
+
 def _install_pocket_voice():
     """Install the local French neural voice before any response is spoken."""
     try:
@@ -41,6 +102,7 @@ def _install_pocket_voice():
         assistant.log.info("VOICE: moteur local Pocket TTS sélectionné, sans fallback cloud/OS")
     except Exception as exc:
         assistant.log.error(f"VOICE: Pocket TTS indisponible : {exc}")
+
 
 def _start_mobile_bridge():
     try:
@@ -103,9 +165,11 @@ def _start_mobile_bridge():
         try: assistant.log.warning(f"MOBILE: passerelle non démarrée : {exc}")
         except Exception: pass
 
+
 def main():
     app=QApplication(sys.argv); app.setQuitOnLastWindowClosed(False); sitecustomize.install_runtime_fixes(assistant); _install_pocket_voice()
     from ui.cockpit_hud import CockpitHud
+    _install_cockpit_command_handler(CockpitHud)
     hud=CockpitHud(assistant); assistant.cockpit=hud; assistant.show_cockpit_panel=hud.show_dynamic_panel; assistant.remove_cockpit_panel=hud.remove_dynamic_panel; assistant.clear_cockpit_panels=hud.clear_dynamic_panels; assistant.get_cockpit_panels=hud.dynamic_panels
     try:
         from core.cockpit_runtime import CockpitRuntime
@@ -123,4 +187,5 @@ def main():
     try: assistant.speech.say("Centre de commande NEO en ligne.")
     except Exception: pass
     QTimer.singleShot(0,_start_core_workers); QTimer.singleShot(200,_start_presence); QTimer.singleShot(500,_start_mobile_bridge); sys.exit(app.exec())
+
 if __name__=="__main__": main()
