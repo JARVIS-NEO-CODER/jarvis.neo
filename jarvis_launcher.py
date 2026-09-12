@@ -7,62 +7,38 @@ import assistant,sitecustomize,voice_runtime
 
 
 def _run_command_direct(command: str) -> None:
-    """Execute a cockpit command independently of the queue worker."""
     command = str(command).strip()
-    if not command:
-        return
+    if not command: return
     try:
-        assistant.signals.log_msg.emit("Vous (Cockpit)", command)
-        assistant.state.abort_requested = False
-        assistant.state.is_processing = True
-        response = assistant.processor.process(command)
+        assistant.signals.log_msg.emit("Vous (Cockpit)", command); assistant.state.abort_requested=False; assistant.state.is_processing=True
+        response=assistant.processor.process(command)
         if not assistant.state.abort_requested:
-            assistant.memory.add_message("user", command)
-            assistant.memory.add_message("assistant", response)
-            assistant.signals.log_msg.emit("Jarvis", response)
-            assistant.speech.say(response)
+            assistant.memory.add_message("user",command); assistant.memory.add_message("assistant",response); assistant.signals.log_msg.emit("Jarvis",response); assistant.speech.say(response)
     except Exception as exc:
-        assistant.log.exception("COCKPIT: commande '%s' en erreur: %s", command, exc)
-        assistant.signals.log_msg.emit("J.A.R.V.I.S.", f"Erreur de commande : {exc}")
+        assistant.log.exception("COCKPIT: commande '%s' en erreur: %s",command,exc); assistant.signals.log_msg.emit("J.A.R.V.I.S.",f"Erreur de commande : {exc}")
     finally:
-        assistant.state.is_processing = False
-        assistant.state.abort_requested = False
+        assistant.state.is_processing=False; assistant.state.abort_requested=False
 
 
 def _install_cockpit_command_handler(CockpitHud):
-    """Bind cockpit buttons to a worker-independent command executor."""
-    def cockpit_command(self, command):
+    def cockpit_command(self,command):
         try:
-            self._on_log("COMMAND", str(command))
-            threading.Thread(target=_run_command_direct, args=(str(command),), daemon=True, name="NEO-cockpit-command").start()
-        except Exception as exc:
-            self._on_log("ERROR", str(exc))
-    CockpitHud._command = cockpit_command
+            self._on_log("COMMAND",str(command)); threading.Thread(target=_run_command_direct,args=(str(command),),daemon=True,name="NEO-cockpit-command").start()
+        except Exception as exc: self._on_log("ERROR",str(exc))
+    CockpitHud._command=cockpit_command
 
 
 def _start_core_workers():
-    workers=(
-        ("command_worker", assistant.command_worker, ()),
-        ("voice_runtime", voice_runtime.run, (assistant,)),
-        ("reminder_worker", assistant.reminder_worker, ()),
-        ("run_web_server", assistant.run_web_server, ()),
-        ("security_worker", assistant.security_worker, ()),
-        ("system_monitor_worker", assistant.system_monitor_worker, ()),
-        ("retro_vision_worker", assistant.retro_vision_worker, ()),
-    )
-    assistant._neo_core_threads = {}
-    for name, worker, args in workers:
-        def runner(fn=worker, fn_args=args, worker_name=name):
-            try:
-                assistant.log.info(f"CORE: worker {worker_name} démarré")
-                fn(*fn_args)
-                assistant.log.warning(f"CORE: worker {worker_name} s'est arrêté")
+    workers=(("command_worker",assistant.command_worker,()),("voice_runtime",voice_runtime.run,(assistant,)),("reminder_worker",assistant.reminder_worker,()),("run_web_server",assistant.run_web_server,()),("security_worker",assistant.security_worker,()),("system_monitor_worker",assistant.system_monitor_worker,()),("retro_vision_worker",assistant.retro_vision_worker,()))
+    assistant._neo_core_threads={}
+    for name,worker,args in workers:
+        def runner(fn=worker,fn_args=args,worker_name=name):
+            try: assistant.log.info(f"CORE: worker {worker_name} démarré"); fn(*fn_args); assistant.log.warning(f"CORE: worker {worker_name} s'est arrêté")
             except Exception as exc:
                 try: assistant.log.exception(f"CORE: worker {worker_name} a planté: {exc}")
                 except Exception: pass
         try:
-            thread=threading.Thread(target=runner,daemon=True,name=f"NEO-{name}")
-            thread.start(); assistant._neo_core_threads[name]=thread
+            thread=threading.Thread(target=runner,daemon=True,name=f"NEO-{name}"); thread.start(); assistant._neo_core_threads[name]=thread
         except Exception as exc:
             try: assistant.log.warning(f"CORE: worker {name} non lancé : {exc}")
             except Exception: pass
@@ -71,8 +47,7 @@ def _start_core_workers():
 def _start_presence():
     try:
         from core.presence_engine import PresenceEngine
-        assistant.presence=PresenceEngine(assistant); assistant.presence.start()
-        assistant.log.info("PRESENCE: moteur proactif connecté | IA locale prioritaire")
+        assistant.presence=PresenceEngine(assistant); assistant.presence.start(); assistant.log.info("PRESENCE: moteur proactif connecté | IA locale prioritaire")
     except Exception as exc:
         try: assistant.log.warning(f"PRESENCE: moteur non démarré : {exc}")
         except Exception: pass
@@ -82,32 +57,22 @@ def _install_pocket_voice():
     try:
         from core.piper_tts_engine import install
         install(assistant); assistant.log.info("VOICE: moteur local Pocket TTS sélectionné, sans fallback cloud/OS")
-    except Exception as exc:
-        assistant.log.error(f"VOICE: Pocket TTS indisponible : {exc}")
+    except Exception as exc: assistant.log.error(f"VOICE: Pocket TTS indisponible : {exc}")
 
 
 def _install_runtime_integrations():
-    """Connect the modern provider/settings core to the historical assistant."""
     try:
         from core.runtime_patches import install
-        engine = install(assistant)
-        assistant.log.info("AI: routeur Groq/Ollama connecté au processeur principal")
-        return engine
+        engine=install(assistant); assistant.log.info("AI: routeur Groq/Ollama connecté au processeur principal"); return engine
     except Exception as exc:
-        assistant.log.warning(f"AI: intégration du nouveau cœur indisponible : {exc}")
-        return None
+        assistant.log.warning(f"AI: intégration du nouveau cœur indisponible : {exc}"); return None
 
 
 def _add_settings_button(hud):
     try:
         from ui.provider_settings import ProviderSettingsDialog
-        button = QPushButton("AI SETTINGS")
-        button.setToolTip("Fournisseur, modèle, clé Groq et fallback")
-        button.clicked.connect(lambda: ProviderSettingsDialog(hud).exec())
-        hud.action_layout.addWidget(button, 3, 0, 1, 2)
-        hud._settings_button = button
-    except Exception as exc:
-        assistant.log.warning(f"UI: panneau paramètres IA indisponible : {exc}")
+        button=QPushButton("AI SETTINGS"); button.setToolTip("Fournisseur, modèle, clé Groq et fallback"); button.clicked.connect(lambda:ProviderSettingsDialog(hud).exec()); hud.action_layout.addWidget(button,3,0,1,2); hud._settings_button=button
+    except Exception as exc: assistant.log.warning(f"UI: panneau paramètres IA indisponible : {exc}")
 
 
 def _start_mobile_bridge():
@@ -155,17 +120,14 @@ def _start_mobile_bridge():
             try: metrics=assistant.collect_system_metrics()
             except Exception: metrics={}
             state=getattr(assistant,"state",None); cfg=getattr(assistant,"CONFIG",{})
-            return {"status":"online" if bool(getattr(state,"is_active",True)) else "offline","cpu_percent":metrics.get("cpu_percent",0),"ram_percent":metrics.get("ram_percent",0),"disk_percent":metrics.get("disk_percent",0),"battery_percent":metrics.get("battery_percent"),"mic_enabled":bool(getattr(state,"mic_enabled",True)),"voice_enabled":bool(getattr(state,"voice_enabled",True)),"listening":bool(getattr(state,"is_listening",False)),"speaking":bool(getattr(state,"is_speaking",False)),"processing":bool(getattr(state,"is_processing",False)),"model":assistant.get_active_model(False),"provider":cfg.get("ai_provider","groq"),"timestamp":time.time()}
-        bridge.action_handler=action_handler; bridge.state_provider=state_provider
-        assistant.signals.log_msg.connect(lambda sender,message:bridge.publish_from_thread("log",{"sender":sender,"message":message})); bridge.start_discovery()
-        threading.Thread(target=lambda:uvicorn.run(bridge.app,host=bridge.host,port=bridge.port,log_level="warning"),daemon=True,name="NEO-mobile-bridge").start()
-        assistant.log.info(f"MOBILE: passerelle active sur le port {bridge.port} | code: {bridge.pairing_code}")
+            return {"status":"online" if bool(getattr(state,"is_active",True)) else "offline","cpu_percent":metrics.get("cpu_percent",0),"ram_percent":metrics.get("ram_percent",0),"disk_percent":metrics.get("disk_percent",0),"battery_percent":metrics.get("battery_percent"),"mic_enabled":bool(getattr(state,"mic_enabled",True)),"voice_enabled":bool(getattr(state,"voice_enabled",True)),"listening":bool(getattr(state,"is_listening",False)),"speaking":bool(getattr(state,"is_speaking",False)),"processing":bool(getattr(state,"is_processing",False)),"model":assistant.get_active_model(False),"provider":cfg.get("ai_provider","groq"),"remote_node_id":getattr(bridge,"remote_node_id",None),"remote_enabled":bool(getattr(bridge,"remote_node_id",None)),"timestamp":time.time()}
+        bridge.action_handler=action_handler; bridge.state_provider=state_provider; assistant.signals.log_msg.connect(lambda sender,message:bridge.publish_from_thread("log",{"sender":sender,"message":message})); bridge.start_discovery()
+        threading.Thread(target=lambda:uvicorn.run(bridge.app,host=bridge.host,port=bridge.port,log_level="warning"),daemon=True,name="NEO-mobile-bridge").start(); assistant.log.info(f"MOBILE: passerelle active sur le port {bridge.port} | code: {bridge.pairing_code}")
         relay_url=str(os.getenv("JARVIS_REMOTE_RELAY_URL","")).strip()
         if relay_url:
             try:
                 from jarvis_remote_client import RemoteTunnelClient
-                remote=RemoteTunnelClient(bridge,relay_url); bridge.remote_node_id=remote.node_id; remote.start()
-                assistant.log.info(f"REMOTE: tunnel sortant actif | node_id={remote.node_id} | relais={remote.remote_url}")
+                remote=RemoteTunnelClient(bridge,relay_url); bridge.remote_node_id=remote.node_id; remote.start(); assistant.log.info(f"REMOTE: tunnel sortant actif | node_id={remote.node_id} | relais={remote.remote_url}")
             except Exception as exc: assistant.log.warning(f"REMOTE: tunnel non démarré : {exc}")
         else: assistant.log.info("REMOTE: désactivé (JARVIS_REMOTE_RELAY_URL non configurée)")
     except Exception as exc:
@@ -174,19 +136,16 @@ def _start_mobile_bridge():
 
 
 def main():
-    app=QApplication(sys.argv); app.setQuitOnLastWindowClosed(False); sitecustomize.install_runtime_fixes(assistant)
-    _install_runtime_integrations(); _install_pocket_voice()
+    app=QApplication(sys.argv); app.setQuitOnLastWindowClosed(False); sitecustomize.install_runtime_fixes(assistant); _install_runtime_integrations(); _install_pocket_voice()
     from ui.cockpit_hud import CockpitHud
-    _install_cockpit_command_handler(CockpitHud)
-    hud=CockpitHud(assistant); assistant.cockpit=hud; assistant.show_cockpit_panel=hud.show_dynamic_panel; assistant.remove_cockpit_panel=hud.remove_dynamic_panel; assistant.clear_cockpit_panels=hud.clear_dynamic_panels; assistant.get_cockpit_panels=hud.dynamic_panels
-    _add_settings_button(hud)
+    _install_cockpit_command_handler(CockpitHud); hud=CockpitHud(assistant); assistant.cockpit=hud; assistant.show_cockpit_panel=hud.show_dynamic_panel; assistant.remove_cockpit_panel=hud.remove_dynamic_panel; assistant.clear_cockpit_panels=hud.clear_dynamic_panels; assistant.get_cockpit_panels=hud.dynamic_panels; _add_settings_button(hud)
     try:
         from core.cockpit_runtime import CockpitRuntime
         assistant.cockpit_runtime=CockpitRuntime(assistant); assistant.cockpit_runtime.install(); assistant.log.info("COCKPIT: runtime dynamique connecté au moteur de commandes et à l'IA")
     except Exception as exc: assistant.log.warning(f"COCKPIT: runtime dynamique non chargé : {exc}")
     cfg=getattr(assistant,"CONFIG",None)
     if isinstance(cfg,dict):
-        cfg.setdefault("presence_active", True); cfg.setdefault("presence_cloud_modes", ["cloud", "agent"]); cfg.setdefault("presence_local_model", cfg.get("model", "llama3.2:3b")); cfg["main_hud_enabled"]=True; cfg["cockpit_enabled"]=True
+        cfg.setdefault("presence_active",True); cfg.setdefault("presence_cloud_modes",["cloud","agent"]); cfg.setdefault("presence_local_model",cfg.get("model","llama3.2:3b")); cfg["main_hud_enabled"]=True; cfg["cockpit_enabled"]=True
         try: assistant.save_config(cfg)
         except Exception: pass
     hud.show(); hud.raise_(); hud.activateWindow()
