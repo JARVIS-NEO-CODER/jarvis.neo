@@ -42,6 +42,55 @@ def _dispatch_voice_command(assistant, text: str) -> None:
     _log(assistant, f"commande vocale envoyée: {text}")
 
 
+def _recognize_google_with_hotword(assistant, recognizer, audio):
+    """Use Google's alternatives so a correct wake word is preferred over a bad first guess."""
+    hotword = str(getattr(assistant, "HOTWORD", "jarvis")).lower().strip()
+    try:
+        result = recognizer.recognize_google(audio, language=assistant.LANGUAGE, show_all=True)
+    except sr.UnknownValueError:
+        return None
+    except sr.RequestError:
+        raise
+
+    if not result:
+        return None
+
+    alternatives = result.get("alternative", []) if isinstance(result, dict) else []
+    transcripts = [str(item.get("transcript", "")).strip() for item in alternatives if item.get("transcript")]
+    if not transcripts:
+        return None
+
+    if hotword:
+        pattern = re.compile(rf"\b{re.escape(hotword)}\b", re.IGNORECASE)
+        for candidate in transcripts:
+            if pattern.search(candidate):
+                return candidate
+
+    return transcripts[0]
+
+
+def _normalize_hotword(text: str, hotword: str) -> tuple[str, bool]:
+    """Repair common French STT guesses for the wake word, only at the start."""
+    if not hotword:
+        return text, False
+
+    pattern = re.compile(rf"^\s*(?P<wake>{re.escape(hotword)})\b", re.IGNORECASE)
+    if pattern.match(text):
+        return text, False
+
+    aliases = {
+        "jarvis": ("service", "jervis", "jarvice", "jarvi", "jarvisse", "jarviss"),
+    }
+    candidates = aliases.get(hotword, ())
+    alias_pattern = re.compile(rf"^\s*(?P<wake>{'|'.join(map(re.escape, candidates))})\b", re.IGNORECASE)
+    match = alias_pattern.match(text)
+    if not match:
+        return text, False
+
+    repaired = alias_pattern.sub(hotword, text, count=1)
+    return repaired, True
+
+
 def run(assistant) -> None:
     """Persistent microphone worker without a pre-STT energy threshold."""
     recognizer = sr.Recognizer()
@@ -119,10 +168,7 @@ def run(assistant) -> None:
 
                     if not text:
                         try:
-                            text = recognizer.recognize_google(audio, language=assistant.LANGUAGE)
-                        except sr.UnknownValueError:
-                            _log(assistant, "STT: aucune parole reconnue dans la capture")
-                            continue
+                            text = _recognize_google_with_hotword(assistant, recognizer, audio)
                         except sr.RequestError as exc:
                             _log(assistant, f"reconnaissance Google indisponible: {exc}")
                             try:
@@ -132,13 +178,19 @@ def run(assistant) -> None:
                                 continue
 
                     if not text:
+                        _log(assistant, "STT: aucune parole reconnue dans la capture")
                         continue
+
                     text = str(text).strip()
                     text_lower = text.lower()
-                    _log(assistant, f"entendu: {text}")
+                    hotword = str(getattr(assistant, "HOTWORD", "jarvis")).lower().strip()
+                    normalized_text, corrected = _normalize_hotword(text_lower, hotword)
+                    if corrected:
+                        _log(assistant, f"STT: correction du mot d'activation: {text_lower!r} -> {normalized_text!r}")
+                        text_lower = normalized_text
+                    _log(assistant, f"entendu: {text_lower}")
 
                     if getattr(assistant.state, "passive_listening", True):
-                        hotword = str(getattr(assistant, "HOTWORD", "jarvis")).lower().strip()
                         if hotword and re.search(rf"\b{re.escape(hotword)}\b", text_lower):
                             try:
                                 assistant.play_wake_chime()
@@ -149,7 +201,7 @@ def run(assistant) -> None:
                                 _dispatch_voice_command(assistant, clean_cmd)
                             else:
                                 try:
-                                    assistant.signals.log_msg.emit("Vous (Voix)", text)
+                                    assistant.signals.log_msg.emit("Vous (Voix)", text_lower)
                                     assistant.speech.say("À vos ordres, monsieur.")
                                 except Exception:
                                     pass
@@ -159,7 +211,7 @@ def run(assistant) -> None:
                         else:
                             _log(assistant, f"parole ignorée: mot d'activation absent ({hotword or 'aucun'})")
                     else:
-                        _dispatch_voice_command(assistant, text)
+                        _dispatch_voice_command(assistant, text_lower)
 
         except Exception as exc:
             _set_listening(assistant, False)
