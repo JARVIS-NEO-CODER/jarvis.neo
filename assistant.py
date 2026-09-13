@@ -3393,33 +3393,81 @@ class JarvisWindow(QMainWindow):
             self.cmd_input.clear()
 
     def _handle_media_search_intent(self, message):
-        try:
-            candidates = re.findall(r'\{[^{}]*\}', str(message), re.S)
-            for raw in candidates:
-                try:
-                    data = json.loads(raw)
-                except Exception:
-                    continue
-                kind = str(data.get("kind") or "").lower()
-                query = str(data.get("query") or "").strip()
-                if kind not in ("image_search", "video_search") or not query:
-                    continue
+        """Extract media-intent JSON from JARVIS output without exposing it in chat."""
+        text = str(message or "")
+        intents = []
+        spans = []
+
+        # Parse JSON objects embedded in prose, fenced blocks, NEO_PANEL output,
+        # etc. Only recognized media kinds are consumed, so normal JSON/code stays visible.
+        for match in re.finditer(r"\{", text):
+            decoder = json.JSONDecoder()
+            try:
+                obj, end = decoder.raw_decode(text[match.start():])
+            except (ValueError, TypeError):
+                continue
+            if not isinstance(obj, dict):
+                continue
+            kind = str(obj.get("kind", "")).lower().strip()
+            if kind not in {"image_search", "video_search"}:
+                continue
+            query = str(obj.get("query", "")).strip()
+            if not query:
+                continue
+            intents.append((kind, obj))
+            spans.append((match.start(), match.start() + end))
+
+        # Deduplicate overlapping/duplicate intent objects.
+        unique = []
+        seen = set()
+        for kind, obj in intents:
+            key = (kind, str(obj.get("query", "")).strip().lower())
+            if key not in seen:
+                seen.add(key)
+                unique.append((kind, obj))
+
+        for kind, obj in unique:
+            try:
                 provider = WebMediaProvider()
+                query = str(obj.get("query", "")).strip()
                 if kind == "image_search":
-                    results = [r.as_dict() for r in provider.search_images(query)]
+                    results = provider.search_images(query, limit=8)
                 else:
-                    results = [r.as_dict() for r in provider.search_videos(query)]
-                if results and hasattr(self, "dynamic_space"):
-                    self.dynamic_space.update_media_search(kind, results, query)
-                    return True
-        except Exception as exc:
-            logging.warning("MEDIA SEARCH: %s", exc)
-        return False
+                    results = provider.search_videos(query, limit=8)
+                payload = []
+                for item in results or []:
+                    if hasattr(item, "__dict__"):
+                        payload.append(dict(item.__dict__))
+                    elif isinstance(item, dict):
+                        payload.append(item)
+                self.dynamic_space.update_media_search(kind, payload, query)
+            except Exception as exc:
+                logging.warning("MEDIA: recherche %s échouée: %s", kind, exc)
+
+        if not unique:
+            return False, text
+
+        # Remove the exact JSON objects first.
+        cleaned = text
+        for a, b in sorted(spans, reverse=True):
+            cleaned = cleaned[:a] + cleaned[b:]
+
+        # Remove formatting wrappers left around an extracted internal panel.
+        cleaned = re.sub(r"(?im)^\s*(?:NEO_PANEL|\*\*\*\s*json|\*\*\s*json|s\*json)\s*$", "", cleaned)
+        cleaned = re.sub(r"(?im)^\s*\*\*\s*(?:Images?|Vidéos?)\s*\*\*\s*$", "", cleaned)
+        cleaned = re.sub(r"(?im)^\s*(?:\{\s*)?\s*$", "", cleaned)
+        cleaned = re.sub(r"[ \t]+\n", "\n", cleaned)
+        cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+
+        if not cleaned:
+            cleaned = "Contenu multimédia chargé dans le Dynamic Space."
+        return True, cleaned
 
     def add_chat_msg(self, sender, msg):
         media_handled = False
+        display_msg = str(msg)
         if sender in ("Jarvis", "J.A.R.V.I.S."):
-            media_handled = self._handle_media_search_intent(str(msg))
+            media_handled, display_msg = self._handle_media_search_intent(display_msg)
         if msg == "__CLEAR_CHAT__":
             self.chat_display.clear()
             return
