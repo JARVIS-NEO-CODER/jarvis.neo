@@ -2609,7 +2609,7 @@ class PrivacyActivityPanel(QFrame):
 
 class DynamicSpaceWidget(QFrame):
     """Espace riche: texte, images, sites, vidéos et liens détectés automatiquement."""
-    image_loaded = pyqtSignal(str, bytes)
+    image_loaded = pyqtSignal(int, str, bytes)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -2642,6 +2642,8 @@ class DynamicSpaceWidget(QFrame):
         root.addWidget(self.scroll, 1)
 
         self.image_loaded.connect(self._apply_image)
+        self._media_generation = 0
+        self._image_targets = {}
 
     def _clear_body(self):
         while self.body_layout.count():
@@ -2722,38 +2724,58 @@ class DynamicSpaceWidget(QFrame):
                 label.setOpenExternalLinks(True)
                 self._card("▶ VIDÉO", label)
 
-    def _add_images(self, urls):
-        for url in urls[:6]:
+    def _add_images(self, items, generation=None):
+        generation = self._media_generation if generation is None else generation
+        for index, item in enumerate(items[:6]):
+            if isinstance(item, dict):
+                url = str(item.get("url") or "")
+                thumbnail = str(item.get("thumbnail") or "")
+            else:
+                url = str(item or "")
+                thumbnail = ""
+            if not url and not thumbnail:
+                continue
             label = QLabel("⏳ Chargement de l'image…")
             label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             label.setMinimumHeight(100)
             label.setWordWrap(True)
             self._card("🖼 IMAGE", label)
-            threading.Thread(target=self._download_image, args=(url,), daemon=True).start()
+            key = f"{generation}:{index}"
+            self._image_targets[key] = label
+            threading.Thread(target=self._download_image, args=(generation, key, url, thumbnail), daemon=True).start()
 
-    def _download_image(self, url):
-        try:
-            response = requests.get(url, timeout=8, headers={"User-Agent": "JARVIS-NEO/3.6"})
-            if response.ok and response.content:
-                self.image_loaded.emit(url, response.content)
-        except Exception as exc:
-            logging.debug("Dynamic Space image load failed: %s", exc)
+    def _download_image(self, generation, key, url, thumbnail=""):
+        headers = {
+            "User-Agent": "JARVIS-NEO/3.6",
+            "Cache-Control": "no-cache",
+            "Pragma": "no-cache",
+        }
+        candidates = [x for x in (url, thumbnail) if x]
+        for candidate in candidates:
+            try:
+                response = requests.get(candidate, timeout=8, headers=headers)
+                if response.ok and response.content:
+                    self.image_loaded.emit(generation, key, response.content)
+                    return
+            except Exception as exc:
+                logging.debug("Dynamic Space image load failed: %s", exc)
 
-    def _apply_image(self, url, data):
+    def _apply_image(self, generation, key, data):
+        if generation != self._media_generation:
+            return
+        label = self._image_targets.get(key)
+        if label is None or not label.isVisible():
+            return
         pixmap = QPixmap()
         if not pixmap.loadFromData(data):
             return
-        for i in range(self.body_layout.count()):
-            frame = self.body_layout.itemAt(i).widget()
-            if not frame:
-                continue
-            for child in frame.findChildren(QLabel):
-                if child.text().startswith("⏳ Chargement"):
-                    child.setPixmap(pixmap.scaled(700, 260, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
-                    child.setText("")
-                    return
+        label.setPixmap(pixmap.scaled(700, 260, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+        label.setText("")
 
     def update_media_search(self, kind, results, query=""):
+        self._media_generation += 1
+        generation = self._media_generation
+        self._image_targets = {}
         self._clear_body()
         kind = str(kind or "").lower()
         items = results or []
@@ -2765,7 +2787,7 @@ class DynamicSpaceWidget(QFrame):
             q.setStyleSheet("color:#8fdcff; padding:6px;")
             self.body_layout.insertWidget(0, q)
         if kind == "image_search":
-            self._add_images([x.get("url", "") for x in items if x.get("url")])
+            self._add_images(items, generation)
         else:
             self._add_videos([x.get("source_url") or x.get("url", "") for x in items if x.get("source_url") or x.get("url")])
         self.scroll.verticalScrollBar().setValue(0)
@@ -2774,6 +2796,8 @@ class DynamicSpaceWidget(QFrame):
         text = str(message or "").strip()
         if not text:
             return
+        self._media_generation += 1
+        self._image_targets = {}
         self._clear_body()
         urls = self._urls(text)
         image_urls = self._image_urls(text)
@@ -3233,7 +3257,27 @@ class JarvisWindow(QMainWindow):
         self.time_label.setStyleSheet("color: #00f3ff; font-weight: bold; font-size: 14px;")
         top_bar.addWidget(self.time_label)
         self.right_panel.addLayout(top_bar)
-        
+
+        # Command Deck: accès direct aux fonctions déjà présentes dans le moteur.
+        deck = QFrame()
+        deck.setObjectName("CommandDeck")
+        deck.setStyleSheet("QFrame#CommandDeck { background: rgba(0,243,255,0.035); border: 1px solid rgba(0,243,255,0.18); border-radius: 10px; }")
+        deck_layout = QGridLayout(deck)
+        deck_layout.setContentsMargins(8, 8, 8, 8)
+        deck_layout.setSpacing(6)
+        quick_actions = [
+            ("🌦 MÉTÉO", "météo"), ("🕒 HEURE", "heure"), ("📅 DATE", "date"), ("📊 SYSTÈME", "stats"),
+            ("🔋 BATTERIE", "batterie"), ("🧩 PROCESSUS", "processus"), ("📋 TÂCHES", "tâches"), ("🧠 MÉMOIRE", "mémos"),
+            ("🗓 AGENDA", "agenda"), ("👁 ÉCRAN", "analyse l'écran"), ("🔎 WEB", "cherche sur le web"), ("📦 PLUGINS", "liste les plugins"),
+            ("🛡 SÉCURITÉ", "sécurité on"), ("🎙 ÉCOUTE", "écoute passive on"), ("⏹ SILENCE", "silence"), ("🛑 ABORT", "abort"),
+        ]
+        for i, (caption, command) in enumerate(quick_actions):
+            btn = GlowButton(caption, state.theme_color)
+            btn.setMinimumHeight(34)
+            btn.clicked.connect(lambda _, cmd=command: command_queue.put(cmd))
+            deck_layout.addWidget(btn, i // 4, i % 4)
+        self.right_panel.addWidget(deck)
+
         # Dynamic Space: alimenté automatiquement par les réponses de JARVIS.
         self.dynamic_space = DynamicSpaceWidget()
         self.right_panel.addWidget(self.dynamic_space)
