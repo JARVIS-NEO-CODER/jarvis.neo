@@ -161,12 +161,10 @@ QHeaderView::section {
     font-weight: 700;
 }
 
-/* Chat bubbles */
 QTextEdit {
     line-height: 1.55;
 }
 
-/* Compact utility controls */
 QToolTip {
     background: #08141e;
     color: #dffaff;
@@ -178,6 +176,9 @@ QToolTip {
 
 
 def apply_theme(app):
-    """Apply the visual layer without changing functionality."""
+    """Apply the visual layer once, without changing functionality."""
+    if app.property("jarvis_neo_premium_theme"):
+        return
     app.setStyleSheet(app.styleSheet() + "\n" + NEO_STYLE)
     app.setFont(QFont("Segoe UI", 10))
+    app.setProperty("jarvis_neo_premium_theme", True)
