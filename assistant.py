@@ -1787,21 +1787,23 @@ class CommandProcessor:
                 return f"Échec de l'exécution de '{name}' : {e}"
 
     def web_search(self, query):
-        """Search the web for real results, then expose the first result URLs to the UI."""
+        """Search the web and feed structured results directly to Dynamic Space."""
         try:
             from core.web_search import WebSearchProvider
             provider = WebSearchProvider(timeout=8.0)
-            results = provider.search(query, limit=6)
+            results = provider.search(str(query), limit=6)
+            if hasattr(self, "dynamic_space"):
+                self.dynamic_space.update_search_results(results, str(query))
             for result in results[:3]:
                 try:
-                    signals.open_url.emit(result.url)
+                    self.signals.open_url.emit(result.url)
                 except Exception:
                     pass
-            lines = [f"{i}. {r.title}\n{r.url}\n{r.snippet}" for i, r in enumerate(results, 1)]
-            return f"Résultats web via {provider.last_provider} pour « {query} » :\n\n" + "\n\n".join(lines)
+            lines = [f"{i}. {r.title}\n{r.snippet}" for i, r in enumerate(results, 1)]
+            return "Résultats trouvés pour « " + str(query) + " » :\n\n" + "\n\n".join(lines)
         except Exception as exc:
-            log.warning(f"Recherche web échouée: {exc}")
-            return f"Recherche web indisponible : {exc}"
+            logging.warning("WEB SEARCH: %s", exc)
+            return "Recherche indisponible : " + str(exc)
 
     def take_note(self, content):
         memory.add_note("Note", content)
