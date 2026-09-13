@@ -3250,7 +3250,7 @@ class JarvisWindow(QMainWindow):
     def _setup_right_panel(self):
         top_bar = QHBoxLayout()
         self.btn_ip = GlowButton("🌐 PASSERELLE WEB")
-        self.btn_ip.clicked.connect(lambda: command_queue.put("ip"))
+        self.btn_ip.clicked.connect(lambda: self.load_url_in_browser("https://www.google.com"))
         top_bar.addWidget(self.btn_ip)
         top_bar.addStretch()
         self.time_label = QLabel("--:--:--")
@@ -3357,16 +3357,36 @@ class JarvisWindow(QMainWindow):
         self.right_panel.addLayout(action_layout)
 
     def load_url_in_browser(self, url_str):
-        """Affiche le navigateur intégré de J.A.R.V.I.S. et charge l'URL"""
-        if WEBENGINE_OK:
-            self.chat_display.hide()
-            self.web_view.setUrl(QUrl(url_str))
-            self.web_view.show()
-            self.browser_toolbar_widget.show()
-            self.url_bar.setText(url_str)
-            signals.log_msg.emit("J.A.R.V.I.S.", f"Navigateur natif actif sur : {url_str}")
-        else:
-            webbrowser.open(url_str)
+        """Open a URL in the embedded browser, with a real system-browser fallback."""
+        url_str = str(url_str or "").strip()
+        if not url_str:
+            return
+        if not url_str.startswith(("http://", "https://")):
+            url_str = "https://" + url_str
+        try:
+            if WEBENGINE_OK and hasattr(self, "web_view"):
+                self.chat_display.hide()
+                self.web_view.setUrl(QUrl(url_str))
+                self.web_view.show()
+                if hasattr(self, "browser_toolbar_widget"):
+                    self.browser_toolbar_widget.show()
+                if hasattr(self, "url_bar"):
+                    self.url_bar.setText(url_str)
+                signals.log_msg.emit("J.A.R.V.I.S.", f"Navigateur intégré : {url_str}")
+                return
+        except Exception as exc:
+            logging.warning("WEBENGINE: chargement échoué: %s", exc)
+
+        # PyQtWebEngine is optional. Never let a missing/failed embedded engine
+        # make web navigation silently do nothing.
+        try:
+            opened = webbrowser.open(url_str, new=2)
+            logging.info("WEB: navigateur système demandé (%s): %s", opened, url_str)
+            if not opened:
+                webbrowser.open_new_tab(url_str)
+        except Exception as exc:
+            logging.error("WEB: navigateur système indisponible: %s", exc)
+            signals.log_msg.emit("Web", f"Impossible d'ouvrir le navigateur : {exc}")
 
     def show_chat_view(self):
         """Bascule de nouveau vers l'interface de discussion"""
@@ -3477,14 +3497,14 @@ class JarvisWindow(QMainWindow):
                 f"<div style='margin:6px 0;padding:10px 14px;background:rgba(0,243,255,0.08);"
                 f"border-left:3px solid #00f3ff;border-radius:0 10px 10px 0;'>"
                 f"<span style='color:#00f3ff;font-size:10px;font-weight:bold;'>{sender} · {ts}</span><br>"
-                f"<span style='color:#e2f8ff;'>{msg}</span></div>"
+                f"<span style='color:#e2f8ff;'>{display_msg}</span></div>"
             )
         elif "Vous" in sender:
             bubble = (
                 f"<div style='margin:6px 0;padding:10px 14px;background:rgba(255,255,255,0.06);"
                 f"border-right:3px solid #ffffff55;border-radius:10px 0 0 10px;text-align:right;'>"
                 f"<span style='color:#aaa;font-size:10px;'>{sender} · {ts}</span><br>"
-                f"<span style='color:#ffffff;'>{msg}</span></div>"
+                f"<span style='color:#ffffff;'>{display_msg}</span></div>"
             )
         else:
             bubble = (
@@ -3492,11 +3512,11 @@ class JarvisWindow(QMainWindow):
                 f"<b>{sender}</b> · {ts}: {msg}</div>"
             )
         if sender in ("Jarvis", "J.A.R.V.I.S.") and not media_handled:
-            self.dynamic_space.update_from_response(msg)
+            self.dynamic_space.update_from_response(display_msg)
 
         # Model output is untrusted text: escape it before placing it in the bubble HTML.
-        safe_msg = html.escape(str(msg)).replace("\n", "<br>")
-        bubble = bubble.replace(str(msg), safe_msg)
+        safe_msg = html.escape(str(display_msg)).replace("\n", "<br>")
+        bubble = bubble.replace(str(display_msg), safe_msg)
         self.chat_display.insertHtml(bubble)
         self.chat_display.insertHtml("<div style='height:2px;'></div>")
         self.chat_display.verticalScrollBar().setValue(self.chat_display.verticalScrollBar().maximum())
