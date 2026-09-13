@@ -1239,17 +1239,40 @@ class SpeechEngine:
                 volume=CONFIG.get("tts_volume", "+0%"),
             )
             await communicate.save(str(path))
+            played = False
             if PYGAME_OK:
-                if not pygame.mixer.get_init():
-                    pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=1024)
-                pygame.mixer.music.load(str(path))
-                pygame.mixer.music.set_volume(1.0)
-                pygame.mixer.music.play()
-                while pygame.mixer.music.get_busy():
-                    if stop_event.is_set() or state.abort_requested:
-                        pygame.mixer.music.stop()
-                        break
-                    await asyncio.sleep(0.05)
+                try:
+                    if not pygame.mixer.get_init():
+                        pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=1024)
+                    pygame.mixer.music.load(str(path))
+                    pygame.mixer.music.set_volume(1.0)
+                    pygame.mixer.music.play()
+                    played = True
+                    log.info("TTS: lecture audio démarrée via pygame")
+                    while pygame.mixer.music.get_busy():
+                        if stop_event.is_set() or state.abort_requested:
+                            pygame.mixer.music.stop()
+                            break
+                        await asyncio.sleep(0.05)
+                except Exception as playback_error:
+                    log.warning(f"TTS lecture pygame échouée: {playback_error}")
+
+            if not played and sys.platform == "win32":
+                # Dernier recours: synthèse Windows, pour garantir une sortie vocale
+                # même si le backend pygame/audio MP3 est indisponible.
+                try:
+                    import subprocess as _subprocess
+                    safe_text = text.replace("'", "''")
+                    ps = (
+                        "Add-Type -AssemblyName System.Speech; "
+                        "$s=New-Object System.Speech.Synthesis.SpeechSynthesizer; "
+                        "$s.Volume=100; $s.Rate=0; "
+                        f"$s.Speak('{safe_text}')"
+                    )
+                    log.warning("TTS: fallback Windows Speech activé")
+                    _subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", ps], timeout=120, check=False)
+                except Exception as fallback_error:
+                    log.error(f"TTS fallback Windows échoué: {fallback_error}")
         except Exception as e:
             log.warning(f"Échec TTS : {e}")
         finally:
@@ -1764,9 +1787,21 @@ class CommandProcessor:
                 return f"Échec de l'exécution de '{name}' : {e}"
 
     def web_search(self, query):
-        url = f"https://www.google.com/search?q={query.strip().replace(' ', '+')}"
-        signals.open_url.emit(url)
-        return f"Recherche web exécutée pour : {query}"
+        """Search the web for real results, then expose the first result URLs to the UI."""
+        try:
+            from core.web_search import WebSearchProvider
+            provider = WebSearchProvider(timeout=8.0)
+            results = provider.search(query, limit=6)
+            for result in results[:3]:
+                try:
+                    signals.open_url.emit(result.url)
+                except Exception:
+                    pass
+            lines = [f"{i}. {r.title}\n{r.url}\n{r.snippet}" for i, r in enumerate(results, 1)]
+            return f"Résultats web via {provider.last_provider} pour « {query} » :\n\n" + "\n\n".join(lines)
+        except Exception as exc:
+            log.warning(f"Recherche web échouée: {exc}")
+            return f"Recherche web indisponible : {exc}"
 
     def take_note(self, content):
         memory.add_note("Note", content)
