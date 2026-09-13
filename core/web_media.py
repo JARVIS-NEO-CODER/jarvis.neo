@@ -7,8 +7,10 @@ from dataclasses import dataclass
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
-# Le launcher source importe ce module avant de créer QApplication.
-# On branche donc le thème à la création de l'application elle-même.
+# Ce module est importé très tôt par le launcher source.
+# Le hook applique le thème après l'initialisation de l'interface afin que
+# les styles globaux de l'ancien HUD ne puissent pas l'écraser.
+from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QApplication
 from core.neo_theme import apply_theme
 
@@ -19,10 +21,13 @@ if not _THEME_HOOK_INSTALLED:
 
     def _jarvis_neo_qapplication_init(self, *args, **kwargs):
         _original_qapplication_init(self, *args, **kwargs)
+        QTimer.singleShot(0, lambda: _safe_apply_theme(self))
+
+    def _safe_apply_theme(app):
         try:
-            apply_theme(self)
+            apply_theme(app)
         except Exception:
-            # Le thème ne doit jamais empêcher le lancement de JARVIS.
+            # Le thème est purement visuel et ne doit jamais bloquer JARVIS.
             pass
 
     QApplication.__init__ = _jarvis_neo_qapplication_init
