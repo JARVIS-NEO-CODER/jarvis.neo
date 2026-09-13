@@ -7,6 +7,27 @@ from dataclasses import dataclass
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
+# Le launcher source importe ce module avant de créer QApplication.
+# On branche donc le thème à la création de l'application elle-même.
+from PyQt6.QtWidgets import QApplication
+from core.neo_theme import apply_theme
+
+
+_THEME_HOOK_INSTALLED = getattr(QApplication, "_jarvis_neo_theme_hook", False)
+if not _THEME_HOOK_INSTALLED:
+    _original_qapplication_init = QApplication.__init__
+
+    def _jarvis_neo_qapplication_init(self, *args, **kwargs):
+        _original_qapplication_init(self, *args, **kwargs)
+        try:
+            apply_theme(self)
+        except Exception:
+            # Le thème ne doit jamais empêcher le lancement de JARVIS.
+            pass
+
+    QApplication.__init__ = _jarvis_neo_qapplication_init
+    QApplication._jarvis_neo_theme_hook = True
+
 
 @dataclass(frozen=True)
 class MediaResult:
@@ -65,9 +86,7 @@ class WebMediaProvider:
             return {}
 
     def _image_items_from_html(self, text: str, query: str):
-        """Bing change régulièrement l'ordre des attributs: on ne dépend plus de m= juste après class."""
         results = []
-        # Cas normal: balise <a ... class="iusc" ... m="{...}">.
         for tag in re.findall(r'<a\b[^>]*>', text, re.I | re.S):
             if not re.search(r'class\s*=\s*["\'][^"\']*\biusc\b', tag, re.I):
                 continue
@@ -82,12 +101,11 @@ class WebMediaProvider:
                 MediaResult(
                     str(data.get('t') or data.get('title') or '').strip() or query,
                     url,
-                    str(data.get('turl') or data.get('turl') or '').strip(),
+                    str(data.get('turl') or '').strip(),
                     str(data.get('purl') or '').strip(),
                 )
             )
 
-        # Fallback si Bing compacte les données ailleurs dans la page.
         if not results:
             for match in re.finditer(r'\bmurl\s*[:=]\s*["\'](https?://[^"\']+)', text, re.I):
                 url = html.unescape(match.group(1)).strip()
