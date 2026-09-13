@@ -1,3 +1,4 @@
+# JARVIS NEO rich Dynamic Space upgrader
 from pathlib import Path
 import re
 
@@ -168,13 +169,10 @@ new_class = r'''class DynamicSpaceWidget(QFrame):
         image_urls = self._image_urls(text)
         video_urls = self._video_urls(text)
         self.header.setText(f"◈ DYNAMIC SPACE  ·  {len(urls)} LIEN(S)  ·  {len(image_urls)} IMAGE(S)  ·  {len(video_urls)} VIDÉO(S)")
-
-        # Le texte reste présent, mais devient une carte parmi les contenus riches.
         self._text_card(text)
         self._add_images(image_urls)
         self._add_videos(video_urls)
         self._add_link_cards(urls, video_urls, image_urls)
-
         self.scroll.verticalScrollBar().setValue(self.scroll.verticalScrollBar().maximum())
 '''
 
