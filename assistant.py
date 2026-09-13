@@ -249,6 +249,7 @@ import speech_recognition as sr
 import pyperclip
 import requests
 from core.conversation_ai import ConversationAI
+from core.web_media import WebMediaProvider
 
 try:
     import numpy as np
@@ -2752,6 +2753,23 @@ class DynamicSpaceWidget(QFrame):
                     child.setText("")
                     return
 
+    def update_media_search(self, kind, results, query=""):
+        self._clear_body()
+        kind = str(kind or "").lower()
+        items = results or []
+        label = "IMAGES" if kind == "image_search" else "VIDÉOS"
+        self.header.setText(f"◈ DYNAMIC SPACE · {label} · {len(items)} résultat(s)")
+        if query:
+            q = QLabel(f"Recherche : {query}")
+            q.setWordWrap(True)
+            q.setStyleSheet("color:#8fdcff; padding:6px;")
+            self.body_layout.insertWidget(0, q)
+        if kind == "image_search":
+            self._add_images([x.get("url", "") for x in items if x.get("url")])
+        else:
+            self._add_videos([x.get("source_url") or x.get("url", "") for x in items if x.get("source_url") or x.get("url")])
+        self.scroll.verticalScrollBar().setValue(0)
+
     def update_from_response(self, message):
         text = str(message or "").strip()
         if not text:
@@ -3330,7 +3348,33 @@ class JarvisWindow(QMainWindow):
             command_queue.put(text)
             self.cmd_input.clear()
 
+    def _handle_media_search_intent(self, message):
+        try:
+            candidates = re.findall(r'\{[^{}]*\}', str(message), re.S)
+            for raw in candidates:
+                try:
+                    data = json.loads(raw)
+                except Exception:
+                    continue
+                kind = str(data.get("kind") or "").lower()
+                query = str(data.get("query") or "").strip()
+                if kind not in ("image_search", "video_search") or not query:
+                    continue
+                provider = WebMediaProvider()
+                if kind == "image_search":
+                    results = [r.as_dict() for r in provider.search_images(query)]
+                else:
+                    results = [r.as_dict() for r in provider.search_videos(query)]
+                if results and hasattr(self, "dynamic_space"):
+                    self.dynamic_space.update_media_search(kind, results, query)
+                    return True
+        except Exception as exc:
+            logging.warning("MEDIA SEARCH: %s", exc)
+        return False
+
     def add_chat_msg(self, sender, msg):
+        if sender in ("Jarvis", "J.A.R.V.I.S."):
+            self._handle_media_search_intent(str(msg))
         if msg == "__CLEAR_CHAT__":
             self.chat_display.clear()
             return
