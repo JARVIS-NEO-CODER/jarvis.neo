@@ -1,0 +1,45 @@
+name: Split assistant.py
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'assistant.py'
+      - 'tools/split_assistant.py'
+      - '.github/workflows/split-assistant.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  split:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Extract legacy MemoryManager
+        run: python tools/split_assistant.py
+
+      - name: Validate syntax
+        run: python -m py_compile assistant.py core/legacy_memory.py
+
+      - name: Commit extraction
+        run: |
+          if git diff --quiet; then
+            echo 'No extraction changes required.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add assistant.py core/legacy_memory.py tools/split_assistant.py .github/workflows/split-assistant.yml
+          git commit -m 'refactor: extract legacy memory manager from assistant'
+          git push
