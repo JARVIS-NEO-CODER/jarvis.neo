@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - '.github/scripts/upgrade_dynamic_space_rich.py'
+      - '.github/workflows/apply-rich-dynamic-space.yml'
       - 'assistant.py'
   workflow_dispatch:
 
