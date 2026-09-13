@@ -3373,8 +3373,9 @@ class JarvisWindow(QMainWindow):
         return False
 
     def add_chat_msg(self, sender, msg):
+        media_handled = False
         if sender in ("Jarvis", "J.A.R.V.I.S."):
-            self._handle_media_search_intent(str(msg))
+            media_handled = self._handle_media_search_intent(str(msg))
         if msg == "__CLEAR_CHAT__":
             self.chat_display.clear()
             return
@@ -3398,7 +3399,7 @@ class JarvisWindow(QMainWindow):
                 f"<div style='margin:4px 0;padding:6px 10px;color:#00ffaa;font-size:12px;'>"
                 f"<b>{sender}</b> · {ts}: {msg}</div>"
             )
-        if sender in ("Jarvis", "J.A.R.V.I.S."):
+        if sender in ("Jarvis", "J.A.R.V.I.S.") and not media_handled:
             self.dynamic_space.update_from_response(msg)
 
         # Model output is untrusted text: escape it before placing it in the bubble HTML.
