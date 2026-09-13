@@ -94,15 +94,13 @@ if 'from core.web_media import WebMediaProvider' not in text:
     text = text.replace('from core.conversation_ai import ConversationAI', 'from core.conversation_ai import ConversationAI\nfrom core.web_media import WebMediaProvider', 1)
 
 if 'def update_media_search(self, kind, results, query="")' not in text:
-    marker = '    def update_from_response(self, text):'
+    marker = '    def update_from_response(self, message):'
     methods = '''    def update_media_search(self, kind, results, query=""):\n        self._clear_body()\n        kind = str(kind or "").lower()\n        items = results or []\n        label = "IMAGES" if kind == "image_search" else "VIDÉOS"\n        self.header.setText(f"◈ DYNAMIC SPACE · {label} · {len(items)} résultat(s)")\n        if query:\n            q = QLabel(f"Recherche : {query}")\n            q.setWordWrap(True)\n            q.setStyleSheet("color:#8fdcff; padding:6px;")\n            self.body_layout.insertWidget(0, q)\n        if kind == "image_search":\n            self._add_images([x.get("url", "") for x in items if x.get("url")])\n        else:\n            self._add_videos([x.get("source_url") or x.get("url", "") for x in items if x.get("source_url") or x.get("url")])\n        self.scroll.verticalScrollBar().setValue(0)\n\n'''
     if marker not in text:
         raise SystemExit('DynamicSpace marker not found')
     text = text.replace(marker, methods + marker, 1)
 
 if 'def _handle_media_search_intent(self, message):' not in text:
-    hook = '''    def _handle_media_search_intent(self, message):\n        try:\n            matches = re.findall(r'\\{\\s*[^{}]*[\\\"\\\']kind[\\\"\\\']\\s*:\\s*[\\\"\\\'](image_search|video_search)[\\\"\\\'][^{}]*\\}', str(message), re.S)\n            for block in matches:\n                continue\n        except Exception:\n            return False\n        return False\n\n'''
-    # Use a robust JSON-object extractor instead of relying on the exact live-feed formatting.
     hook = '''    def _handle_media_search_intent(self, message):\n        try:\n            candidates = re.findall(r'\\{[^{}]*\\}', str(message), re.S)\n            for raw in candidates:\n                try:\n                    data = json.loads(raw)\n                except Exception:\n                    continue\n                kind = str(data.get("kind") or "").lower()\n                query = str(data.get("query") or "").strip()\n                if kind not in ("image_search", "video_search") or not query:\n                    continue\n                provider = WebMediaProvider()\n                if kind == "image_search":\n                    results = [r.as_dict() for r in provider.search_images(query)]\n                else:\n                    results = [r.as_dict() for r in provider.search_videos(query)]\n                if results and hasattr(self, "dynamic_space"):\n                    self.dynamic_space.update_media_search(kind, results, query)\n                    return True\n        except Exception as exc:\n            logging.warning("MEDIA SEARCH: %s", exc)\n        return False\n\n'''
     pos = text.find('    def add_chat_msg(')
     if pos < 0:
