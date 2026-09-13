@@ -1,0 +1,33 @@
+name: One-time Dynamic Space UI repair
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply UI repair
+        run: python scripts/fix_dynamic_space_ui.py
+
+      - name: Validate Python syntax
+        run: python -m py_compile assistant.py
+
+      - name: Commit repair and remove one-time files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm -f scripts/fix_dynamic_space_ui.py .github/workflows/one-time-ui-fix.yml
+          git add assistant.py scripts/fix_dynamic_space_ui.py .github/workflows/one-time-ui-fix.yml
+          git commit -m "fix: make dynamic space and long responses robust"
+          git push
