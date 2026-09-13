@@ -219,6 +219,7 @@ import base64
 import datetime
 import hashlib
 import hmac
+import html
 import importlib.util
 import json
 import logging
@@ -2568,6 +2569,66 @@ class PrivacyActivityPanel(QFrame):
             last = items[-1]
             self.activity.setText(f"[{last['category'].upper()}] {last['message']}")
 
+class DynamicSpaceWidget(QFrame):
+    """Dynamic contextual panel driven automatically by JARVIS responses."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("DynamicSpace")
+        self.setMaximumHeight(220)
+        self.setStyleSheet("""
+            QFrame#DynamicSpace {
+                background: rgba(0, 243, 255, 0.055);
+                border: 1px solid rgba(0, 243, 255, 0.35);
+                border-radius: 12px;
+            }
+            QLabel { background: transparent; border: none; }
+            QTextEdit {
+                background: transparent; border: none; color: #dff9ff;
+                font-family: 'Segoe UI', sans-serif; font-size: 12px;
+                padding: 4px 8px;
+            }
+        """)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 8, 12, 10)
+        layout.setSpacing(5)
+
+        header = QHBoxLayout()
+        title = QLabel("◈ DYNAMIC SPACE")
+        title.setStyleSheet("color:#00f3ff; font-size:10px; font-weight:bold; letter-spacing:1.5px;")
+        self.meta = QLabel("EN ATTENTE")
+        self.meta.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self.meta.setStyleSheet("color:#6f9baa; font-size:9px;")
+        header.addWidget(title)
+        header.addStretch()
+        header.addWidget(self.meta)
+        layout.addLayout(header)
+
+        self.content = QTextEdit()
+        self.content.setReadOnly(True)
+        self.content.setAcceptRichText(False)
+        self.content.setLineWrapMode(QTextEdit.LineWrapMode.WidgetWidth)
+        self.content.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.content.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.content.setPlaceholderText("JARVIS alimentera cet espace automatiquement.")
+        layout.addWidget(self.content)
+
+    def update_from_response(self, message):
+        text = str(message or "").strip()
+        if not text:
+            return
+        # Keep the Dynamic Space useful rather than duplicating the whole chat.
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        bullets = [line for line in lines if line.startswith(("- ", "• ", "* ", "1. ", "2. ", "3. "))]
+        if bullets:
+            preview = "\n".join(bullets[:8])
+        else:
+            preview = " ".join(lines)
+        if len(preview) > 900:
+            preview = preview[:897].rstrip() + "…"
+        self.content.setPlainText(preview)
+        self.meta.setText(f"{len(text):,} CARACTÈRES".replace(",", " "))
+        self.content.verticalScrollBar().setValue(self.content.verticalScrollBar().maximum())
+
 class JarvisWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -3016,12 +3077,20 @@ class JarvisWindow(QMainWindow):
         top_bar.addWidget(self.time_label)
         self.right_panel.addLayout(top_bar)
         
-        # NOTE : Ici nous créons un conteneur intelligent pour basculer facilement entre le Chat IA et le Navigateur Web Natif intégré
+        # Dynamic Space: alimenté automatiquement par les réponses de JARVIS.
+        self.dynamic_space = DynamicSpaceWidget()
+        self.right_panel.addWidget(self.dynamic_space)
+
+        # Conteneur intelligent pour basculer entre Chat IA et navigateur natif.
         self.content_stack_layout = QVBoxLayout()
         
-        # 1. Zone de Chat standard
+        # Zone de Chat robuste pour les réponses longues.
         self.chat_display = QTextEdit()
         self.chat_display.setReadOnly(True)
+        self.chat_display.setAcceptRichText(True)
+        self.chat_display.setLineWrapMode(QTextEdit.LineWrapMode.WidgetWidth)
+        self.chat_display.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.chat_display.setUndoRedoEnabled(False)
         self.content_stack_layout.addWidget(self.chat_display)
         
         # 2. Navigateur Web Intégré (si PyQtWebEngine est disponible)
@@ -3146,7 +3215,14 @@ class JarvisWindow(QMainWindow):
                 f"<div style='margin:4px 0;padding:6px 10px;color:#00ffaa;font-size:12px;'>"
                 f"<b>{sender}</b> · {ts}: {msg}</div>"
             )
-        self.chat_display.append(bubble)
+        if sender in ("Jarvis", "J.A.R.V.I.S."):
+            self.dynamic_space.update_from_response(msg)
+
+        # Model output is untrusted text: escape it before placing it in the bubble HTML.
+        safe_msg = html.escape(str(msg)).replace("\n", "<br>")
+        bubble = bubble.replace(str(msg), safe_msg)
+        self.chat_display.insertHtml(bubble)
+        self.chat_display.insertHtml("<div style='height:2px;'></div>")
         self.chat_display.verticalScrollBar().setValue(self.chat_display.verticalScrollBar().maximum())
 
     def update_status(self, status): self.status_label.setText(f"STATUT: {status}")
