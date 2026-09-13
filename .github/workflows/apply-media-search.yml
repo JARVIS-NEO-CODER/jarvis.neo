@@ -1,0 +1,38 @@
+name: Apply media search integration
+
+on:
+  push:
+    paths:
+      - '.github/scripts/add-media-search.py'
+      - '.github/workflows/apply-media-search.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Patch media support
+        run: python .github/scripts/add-media-search.py
+      - name: Validate Python
+        run: python -m py_compile assistant.py core/web_media.py core/web_search.py
+      - name: Commit production changes and remove patcher
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add assistant.py core/web_media.py
+          git diff --cached --quiet && { echo 'No changes'; exit 0; }
+          git commit -m 'feat: render real image and video search results'
+          git push
+          rm -f .github/scripts/add-media-search.py .github/workflows/apply-media-search.yml
+          git add -A
+          git commit -m 'chore: remove one-time media patcher'
+          git push
