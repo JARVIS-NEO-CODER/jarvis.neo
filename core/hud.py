@@ -39,12 +39,12 @@ CATEGORIES = [
     ]),
     ("🛡️ SÉCURITÉ", [
         ("SÉCURITÉ ON", "sécurité on", True), ("SÉCURITÉ OFF", "sécurité off", True),
-        ("SENTINELLE", "__sentinel__", True), ("ACTIVITÉ", "__activity__", True),
+        ("SENTINELLE", None, False), ("ACTIVITÉ", None, False),
         ("PERMISSIONS", None, False), ("SESSIONS", None, False), ("APPAREILS", None, False),
     ]),
     ("⏰ AUTOMATION", [
         ("TÂCHES", "mes tâches", True), ("MÉMOS", "mes mémos", True), ("AGENDA", None, False),
-        ("RAPPELS", None, False), ("WORKFLOWS", None, False), ("MACROS", "__macros__", True), ("HISTORIQUE", "__activity__", True),
+        ("RAPPELS", None, False), ("WORKFLOWS", None, False), ("MACROS", "__macros__", True), ("HISTORIQUE", None, False),
     ]),
     ("🧩 PLUGINS", [
         ("LISTE", "liste les plugins", True), ("CHARGER", "__load_plugin__", True), ("DÉCHARGER", "__unload_plugin__", True),
@@ -119,10 +119,6 @@ class NeoHudPanel(QFrame):
             self.window._stop_tts(); return
         if command == "__retro__":
             self.window._toggle_retro(); return
-        if command == "__sentinel__":
-            self.window._run_command("sécurité on"); return
-        if command == "__activity__":
-            self.window._run_command("processus"); return
         if command == "__macros__":
             self.window._show_module("MacrosWidget", "MACROS"); return
         if command == "__focus__":
