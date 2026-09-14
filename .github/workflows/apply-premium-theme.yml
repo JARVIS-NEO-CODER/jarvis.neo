@@ -1,10 +1,11 @@
-name: Apply premium NEO theme
+name: Apply premium NEO theme and voice optimizations
 
 on:
   push:
     branches: [main]
     paths:
       - 'assistant.py'
+      - 'core/assistant_components.py'
       - 'core/neo_theme.py'
       - '.github/scripts/apply-premium-theme.py'
       - '.github/workflows/apply-premium-theme.yml'
@@ -13,7 +14,7 @@ permissions:
   contents: write
 
 jobs:
-  theme:
+  patch-runtime:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
@@ -21,22 +22,26 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Apply premium theme directly to source
+      - name: Apply runtime optimizations
         run: |
           python .github/scripts/apply-premium-theme.py
-          python -m py_compile assistant.py
-      - name: Verify theme hook
+          python -m py_compile assistant.py core/assistant_components.py
+      - name: Verify source changes
         run: |
           grep -F "from core.neo_theme import apply_theme" assistant.py
-          grep -F "apply_theme(QApplication.instance())" assistant.py
+          grep -F "apply_theme(QApplication.instance(), window)" assistant.py
+          grep -F "speech.say(response, priority=True)" assistant.py
+          grep -F "calibrated = False" assistant.py
+          grep -F "def say(self, text, priority=False)" core/assistant_components.py
+          grep -F "self._lock = threading.Lock()" core/assistant_components.py
       - name: Commit
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+users.noreply.github.com'
-          git add assistant.py
+          git add assistant.py core/assistant_components.py
           if git diff --cached --quiet; then
-            echo 'Theme hook already present.'
+            echo 'Runtime optimizations already present.'
           else
-            git commit -m 'feat: apply premium NEO interface theme to source'
+            git commit -m 'feat: reduce voice response latency and apply NEO theme'
             git push
           fi
