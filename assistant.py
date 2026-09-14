@@ -737,7 +737,8 @@ if FASTAPI_OK:
             const jarvisToken = sessionStorage.getItem('jarvisToken') || new URLSearchParams(location.search).get('token') || prompt('Jeton JARVIS requis pour le contrôle distant :');
             if (jarvisToken) sessionStorage.setItem('jarvisToken', jarvisToken);
             document.getElementById('cameraFeed').src = `/video_feed?token=${encodeURIComponent(jarvisToken || '')}`;
-            const ws = new WebSocket(`ws://${location.host}/ws?token=${encodeURIComponent(jarvisToken || '')}`);
+            const wsScheme = location.protocol === 'https:' ? 'wss' : 'ws';
+            const ws = new WebSocket(`${wsScheme}://${location.host}/ws?token=${encodeURIComponent(jarvisToken || '')}`);
             const chat = document.getElementById('chat');
             ws.onmessage = (event) => {
                 const data = JSON.parse(event.data);
@@ -749,8 +750,12 @@ if FASTAPI_OK:
             };
             function appendMsg(sender, text) {
                 const div = document.createElement('div');
-                div.className = 'msg ' + (sender.includes('Vous') ? 'user' : 'jarvis');
-                div.innerHTML = `<b>${sender}:</b> ${text}`;
+                div.className = 'msg ' + (String(sender).includes('Vous') ? 'user' : 'jarvis');
+                const name = document.createElement('b');
+                name.textContent = String(sender) + ': ';
+                const body = document.createTextNode(String(text));
+                div.appendChild(name);
+                div.appendChild(body);
                 chat.appendChild(div);
                 chat.scrollTop = chat.scrollHeight;
             }

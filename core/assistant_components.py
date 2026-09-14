@@ -19,6 +19,7 @@ import sys
 import threading
 import time
 from pathlib import Path
+from urllib.parse import quote_plus
 
 import psutil
 import pyautogui
@@ -326,6 +327,7 @@ class CommandProcessor:
         }
         self.intents = {
             r"ouvre\s+(.+)": self.open_app, r"ferme\s+(.+)|tue\s+(.+)": self.kill_app,
+            r"(?:cherche|recherche|trouve|montre)\s+(?:des?\s+)?(?:images?|photos?)\s+(?:de|sur|pour)?\s*(.+)": self.image_search,
             r"cherche\s+(.+)": self.web_search, r"note\s+(.+)": self.take_note,
             r"météo": self.get_weather, r"heure|temps": self.get_time, r"date": self.get_date,
             r"système|stats|performance": self.get_system_stats, r"volume\s+(haut|bas|muet|plus|moins)": self.control_volume,
@@ -464,7 +466,8 @@ class RetroVisionWidget(QWidget):
 class MacrosWidget(QWidget):
     def __init__(self,parent=None):
         super().__init__(parent); layout=QVBoxLayout(self); self.input=QTextEdit(); self.input.setPlaceholderText("Actions de routine"); layout.addWidget(self.input); btn=QPushButton("Enregistrer"); btn.clicked.connect(self.save); layout.addWidget(btn)
-    def save(self): signals.log_msg.emit("Macros","Routine enregistrée.")
+    def save(self):
+        _signals.log_msg.emit("Macros", "Routine enregistrée.")
 
 class NtfySettingsWidget(QWidget):
     def __init__(self,parent=None):
@@ -513,7 +516,9 @@ class JarvisWindow(QMainWindow):
         if text: signals.log_msg.emit("Vous",text); command_queue.put(text); self.cmd_input.clear()
     def add_chat_msg(self,sender,msg):
         if msg=="__CLEAR_CHAT__": self.chat_display.clear(); return
-        self.chat_display.append(f"<b>{html.escape(str(sender))}</b>: {html.escape(str(msg)).replace(chr(10),'<br>')}")
+        safe_sender = html.escape(str(sender))
+        safe_msg = html.escape(str(msg)).replace(chr(10), "<br>")
+        self.chat_display.append(f"<b>{safe_sender}</b>: {safe_msg}")
         self.chat_display.verticalScrollBar().setValue(self.chat_display.verticalScrollBar().maximum())
     def update_status(self,status): self.status_label.setText(f"STATUT: {status}")
     def _on_audio_level(self,level): self.audio_bar.set_level(level)
