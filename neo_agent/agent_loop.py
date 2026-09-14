@@ -15,11 +15,7 @@ class LLMAdapter(Protocol):
 
 
 class AgentLoop:
-    """Goal -> decision -> tool -> observation -> decision loop.
-
-    The LLM is treated as an untrusted planner. It cannot call Python directly;
-    every requested operation passes through ToolRegistry and PermissionPolicy.
-    """
+    """Goal -> decision -> tool -> observation -> decision loop."""
 
     def __init__(
         self,
@@ -59,16 +55,20 @@ class AgentLoop:
         return task
 
     def approve(self, task_id: str) -> Task | None:
-        """Resume a task after an approval-gated tool call.
-
-        The actual approval token is consumed by the next requested action via
-        task context, keeping the UI layer separate from the execution layer.
-        """
+        """Execute exactly the action that was shown to the user for approval."""
         task = self.tasks.get(task_id)
         if task is None:
             return None
-        task.context["approval_granted"] = True
-        self.tasks.save_event(task, "approval_granted")
+        pending = task.context.pop("pending_tool", None)
+        if not pending:
+            self.tasks.save_event(task, "approval_ignored", reason="no pending tool")
+            return task
+
+        self.tasks.save_event(task, "approval_granted", tool=pending["tool"])
+        result = self.tools.execute(pending["tool"], pending["arguments"], approved=True)
+        self._record_result(task, result)
+        self._apply_result(task, result)
+        self.tasks.update(task, TaskState.RUNNING)
         self.run(task_id)
         return task
 
@@ -121,8 +121,7 @@ class AgentLoop:
                     break
                 continue
 
-            approved = bool(task.context.pop("approval_granted", False))
-            result = self.tools.execute(decision.tool, decision.arguments, approved=approved)
+            result = self.tools.execute(decision.tool, decision.arguments, approved=False)
             self._record_result(task, result)
 
             if result.requires_approval:
@@ -133,15 +132,7 @@ class AgentLoop:
                 self.tasks.update(task, TaskState.WAITING_APPROVAL)
                 break
 
-            task.step += 1
-            task.retries = 0
-            if not result.ok:
-                # Feed the failure back into the next model decision instead of
-                # crashing or silently pretending the action succeeded.
-                task.context["last_error"] = result.error
-            else:
-                task.context["last_result"] = result.data
-
+            self._apply_result(task, result)
             self.tasks.update(task, TaskState.RUNNING)
         else:
             self.tasks.update(task, TaskState.FAILED)
@@ -149,6 +140,14 @@ class AgentLoop:
 
         self._emit("task.updated", task)
         return task
+
+    def _apply_result(self, task: Task, result: ToolResult) -> None:
+        task.step += 1
+        task.retries = 0
+        if not result.ok:
+            task.context["last_error"] = result.error
+        else:
+            task.context["last_result"] = result.data
 
     def _record_result(self, task: Task, result: ToolResult) -> None:
         self.tasks.save_event(task, "tool_result", result=result.to_dict())
@@ -194,6 +193,6 @@ class AgentLoop:
     def _emit(self, event: str, task: Task) -> None:
         if self.event:
             try:
-                self.event(event, {"task": asdict(task)})
+                self.event(event, {"task": task.to_dict()})
             except Exception:
                 pass
