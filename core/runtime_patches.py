@@ -1,17 +1,21 @@
 """Runtime integration patches for the legacy assistant entry point."""
 from __future__ import annotations
 
+import json
 import os
+import re
 import subprocess
 import types
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote_plus
 
 from .conversation_ai import ConversationAI
 from .data_registry import get_data
 
 CURRENT_GROQ_MODEL = "openai/gpt-oss-20b"
 DEPRECATED_GROQ_MODELS = {"llama-3.1-8b-instant", "llama-3.3-70b-versatile"}
+_MEDIA_PAYLOAD = re.compile(r"\{\s*[\"'](?:id|kind|query)[\"'][^{}]{0,2000}\}", re.S)
 
 
 def _build_ai_messages(assistant: Any, text: str) -> list[dict[str, str]]:
@@ -36,6 +40,36 @@ def _build_ai_messages(assistant: Any, text: str) -> list[dict[str, str]]:
     return messages
 
 
+def _clean_media_response(text: str) -> str:
+    """Keep internal media JSON/control payloads out of the visible chat."""
+    raw = str(text or "").strip()
+    if not raw:
+        return raw
+    try:
+        data = json.loads(raw)
+        if isinstance(data, dict) and str(data.get("kind", "")).lower() in {"image_search", "video_search"}:
+            query = str(data.get("query") or "").strip()
+            if query:
+                return f"Recherche d'images lancée pour « {query} »."
+    except Exception:
+        pass
+
+    match = _MEDIA_PAYLOAD.search(raw)
+    if match:
+        try:
+            data = json.loads(match.group(0).replace("'", '"'))
+            if isinstance(data, dict) and str(data.get("kind", "")).lower() in {"image_search", "video_search"}:
+                query = str(data.get("query") or "").strip()
+                cleaned = _MEDIA_PAYLOAD.sub("", raw).strip()
+                if cleaned and query:
+                    return cleaned
+                if query:
+                    return f"Recherche d'images lancée pour « {query} »."
+        except Exception:
+            pass
+    return raw
+
+
 def _ask_ai(self: Any, text: str) -> str:
     assistant = self._neo_assistant
     engine: ConversationAI = self._neo_conversation_ai
@@ -44,7 +78,7 @@ def _ask_ai(self: Any, text: str) -> str:
     try:
         result = engine.chat(_build_ai_messages(assistant, text), temperature=0.2, max_tokens=2048)
         assistant.signals.status_change.emit("OPÉRATIONNEL")
-        return result
+        return _clean_media_response(result)
     except Exception as exc:
         assistant.signals.status_change.emit("ERREUR")
         return f"Erreur noyau IA : {exc}"
