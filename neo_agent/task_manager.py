@@ -31,6 +31,11 @@ class Task:
         self.history.append({"time": _now(), "event": event, **data})
         self.updated_at = _now()
 
+    def to_dict(self) -> dict[str, Any]:
+        data = asdict(self)
+        data["state"] = self.state.value
+        return data
+
 
 class TaskManager:
     """Persistent task state so long-running work can survive restarts."""
@@ -82,14 +87,14 @@ class TaskManager:
     def _save(self, task: Task) -> None:
         target = self.root / f"{task.id}.json"
         temp = target.with_suffix(".tmp")
-        temp.write_text(json.dumps(asdict(task), ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+        temp.write_text(json.dumps(task.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
         temp.replace(target)
 
     def _load(self) -> None:
         for path in self.root.glob("*.json"):
             try:
                 data = json.loads(path.read_text(encoding="utf-8"))
-                data["state"] = TaskState(data.get("state", TaskState.PENDING))
+                data["state"] = TaskState(data.get("state", TaskState.PENDING.value))
                 task = Task(**data)
                 self._tasks[task.id] = task
             except Exception:
