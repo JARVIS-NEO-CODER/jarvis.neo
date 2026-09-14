@@ -3,8 +3,9 @@ from __future__ import annotations
 import html
 import json
 import re
+import webbrowser
 from dataclasses import dataclass
-from urllib.parse import quote
+from urllib.parse import parse_qs, quote, unquote_plus, urlencode, urlparse, urlunparse
 from urllib.request import Request, urlopen
 
 # Ce module est importé très tôt par le launcher source.
@@ -32,6 +33,44 @@ if not _THEME_HOOK_INSTALLED:
 
     QApplication.__init__ = _jarvis_neo_qapplication_init
     QApplication._jarvis_neo_theme_hook = True
+
+
+# Les commandes vocales "cherche une image/photo de ..." passaient auparavant
+# par la recherche Google classique. Le navigateur était donc bien ouvert,
+# mais sur le mauvais type de résultats. On normalise uniquement les URLs
+# Google Search contenant explicitement un terme média, sans toucher aux
+# recherches Web ordinaires.
+_ORIGINAL_WEBBROWSER_OPEN = webbrowser.open
+_MEDIA_TERMS = re.compile(r"(?:^|\b)(?:image|images|photo|photos)(?:\b|$)", re.I)
+
+
+def _jarvis_media_browser_open(url, new=0, autoraise=True):
+    try:
+        parsed = urlparse(str(url))
+        if parsed.netloc.lower().endswith("google.com") and parsed.path.rstrip("/") == "/search":
+            params = parse_qs(parsed.query, keep_blank_values=True)
+            query = unquote_plus(params.get("q", [""])[0]).strip()
+            if _MEDIA_TERMS.search(query):
+                # Retire le mot "image/photo" de la requête pour obtenir le
+                # sujet réel, puis force le mode Images de Google.
+                media_query = _MEDIA_TERMS.sub(" ", query)
+                media_query = re.sub(r"\s+", " ", media_query).strip()
+                params["q"] = [media_query]
+                params["tbm"] = ["isch"]
+                params.setdefault("hl", ["fr"])
+                params.setdefault("safe", ["active"])
+                query_string = urlencode(params, doseq=True)
+                url = urlunparse(parsed._replace(query=query_string))
+    except Exception:
+        # La normalisation média est facultative : une URL invalide ne doit
+        # jamais empêcher l'ouverture normale du navigateur.
+        pass
+    return _ORIGINAL_WEBBROWSER_OPEN(url, new=new, autoraise=autoraise)
+
+
+if not getattr(webbrowser, "_jarvis_neo_media_patch", False):
+    webbrowser.open = _jarvis_media_browser_open
+    webbrowser._jarvis_neo_media_patch = True
 
 
 @dataclass(frozen=True)
