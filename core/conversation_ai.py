@@ -42,11 +42,7 @@ class OllamaChatProvider:
         if self.ollama is None:
             raise RuntimeError("Ollama n'est pas installé.")
         client = self.ollama.Client(**({"host": self.base_url} if self.base_url else {}))
-        response = client.chat(
-            model=self.model,
-            messages=messages,
-            options={"temperature": temperature, "num_predict": max_tokens},
-        )
+        response = client.chat(model=self.model, messages=messages, options={"temperature": temperature, "num_predict": max_tokens})
         try:
             return response["message"]["content"]
         except (KeyError, TypeError) as exc:
@@ -70,25 +66,11 @@ class ConversationAI:
         self.router = self._build_router()
 
     def _build_router(self):
-        groq = GroqProvider(
-            api_key=self.config.get("groq_api_key", ""),
-            model=self.config.get("groq_model", DEFAULT_GROQ_MODEL),
-            timeout=float(self.config.get("groq_timeout", 60)),
-        )
+        groq = GroqProvider(api_key=self.config.get("groq_api_key", ""), model=self.config.get("groq_model", DEFAULT_GROQ_MODEL), timeout=float(self.config.get("groq_timeout", 60)))
         ollama = None
         if self.config.get("ollama_enabled", True):
-            ollama = OllamaChatProvider(
-                self.ollama_module,
-                self.config.get("model", "llama3.2:3b"),
-                self.config.get("ollama_base_url", "http://127.0.0.1:11434"),
-            )
-        return AIProviderRouter(
-            groq=groq,
-            ollama=ollama,
-            prefer_groq=self.config.get("ai_provider", "groq") != "ollama",
-            fallback_to_ollama=bool(self.config.get("groq_fallback_to_ollama", True)),
-            quota_fallback_mode=self.config.get("groq_quota_fallback", "ollama"),
-        )
+            ollama = OllamaChatProvider(self.ollama_module, self.config.get("model", "llama3.2:3b"), self.config.get("ollama_base_url", "http://127.0.0.1:11434"))
+        return AIProviderRouter(groq=groq, ollama=ollama, prefer_groq=self.config.get("ai_provider", "groq") != "ollama", fallback_to_ollama=bool(self.config.get("groq_fallback_to_ollama", True)), quota_fallback_mode=self.config.get("groq_quota_fallback", "ollama"))
 
     def refresh(self) -> dict[str, Any]:
         self.router = self._build_router()
@@ -136,17 +118,19 @@ Règles:
 
     def decide(self, context: dict[str, Any]) -> dict[str, Any] | str:
         payload = json.dumps(context, ensure_ascii=False, default=str)
-        return self.conversation.router.chat(
-            [
-                {"role": "system", "content": self.SYSTEM},
-                {"role": "user", "content": payload},
-            ],
-            temperature=0.1,
-            max_tokens=1400,
-        )
+        return self.conversation.router.chat([
+            {"role": "system", "content": self.SYSTEM},
+            {"role": "user", "content": payload},
+        ], temperature=0.1, max_tokens=1400)
 
 
 class AutonomousCommandBridge:
+    LONG_RUNNING_MARKERS = (
+        "code ", "code-moi", "programme", "développe", "développer", "crée un jeu",
+        "construis", "répare le projet", "corrige le projet", "analyse le projet",
+        "installe", "configure le projet", "pendant que", "je pars", "quand je suis",
+    )
+
     def __init__(self, config: dict[str, Any], conversation: ConversationAI | None = None):
         self.config = config
         self.conversation = conversation or ConversationAI(config)
@@ -161,8 +145,7 @@ class AutonomousCommandBridge:
                 return self.runtime
             from neo_agent.agent_loop import AgentLoop
             from neo_agent.models import AgentConfig
-            from neo_agent.ollama import OllamaAdapter
-            from neo_agent.permissions import PermissionMode
+            from neo_agent.permissions import PermissionMode, PermissionPolicy
             from neo_agent.task_manager import TaskManager
             from neo_agent.tools import ToolRegistry
             import core.assistant_components as components
@@ -170,17 +153,8 @@ class AutonomousCommandBridge:
             mode_value = max(1, min(3, int(self.config.get("agent_permission_mode", 3))))
             cwd = str(Path(self.config.get("agent_cwd", ".")).expanduser().resolve())
             state_dir = str(Path(self.config.get("agent_state_dir", "~/.jarvis_neo/agent")).expanduser())
-            agent_config = AgentConfig(
-                permission_mode=PermissionMode(mode_value),
-                cwd=cwd,
-                state_dir=state_dir,
-                max_steps=int(self.config.get("agent_max_steps", 24)),
-            )
-
-            policy = None
-            from neo_agent.permissions import PermissionPolicy
-            policy = PermissionPolicy(agent_config.permission_mode)
-            tools = ToolRegistry(policy, cwd)
+            agent_config = AgentConfig(permission_mode=mode_value, cwd=cwd, state_dir=state_dir, max_steps=int(self.config.get("agent_max_steps", 24)))
+            tools = ToolRegistry(PermissionPolicy(PermissionMode(mode_value)), cwd)
             legacy_tools = getattr(components, "tools", None)
             if legacy_tools is not None:
                 self._register_legacy_tools(tools, legacy_tools)
@@ -194,14 +168,7 @@ class AutonomousCommandBridge:
                     pass
 
             self.runtime = type("AgentRuntime", (), {})()
-            self.runtime.agent = AgentLoop(
-                _AgentLLMAdapter(self.conversation),
-                config=agent_config,
-                tools=tools,
-                tasks=TaskManager(state_dir),
-                event=event,
-            )
-            self.runtime.submit = lambda goal, background=True: self._submit(goal, background)
+            self.runtime.agent = AgentLoop(_AgentLLMAdapter(self.conversation), config=agent_config, tools=tools, tasks=TaskManager(state_dir), event=event)
             return self.runtime
 
     @staticmethod
@@ -224,7 +191,11 @@ class AutonomousCommandBridge:
         return task
 
     def process(self, text: str) -> str:
-        task = self._submit(text, background=False)
+        goal = str(text).strip()
+        background = any(marker in goal.lower() for marker in self.LONG_RUNNING_MARKERS)
+        task = self._submit(goal, background=background)
+        if background:
+            return f"Tâche autonome lancée en arrière-plan. ID : {task.id}"
         if task.state.value == "completed":
             return str(task.context.get("result") or "Tâche terminée.")
         if task.state.value == "waiting_approval":
@@ -250,8 +221,7 @@ def _emit_open_url(url: str):
 
 def _image_search(query: str):
     from .web_media import WebMediaProvider
-    WebMediaProvider().search_images(str(query).strip(), limit=8)
-    return {"query": str(query).strip(), "started": True}
+    return {"query": str(query).strip(), "results": [item.as_dict() for item in WebMediaProvider().search_images(query, limit=8)]}
 
 
 def _screenshot():
@@ -272,15 +242,10 @@ def _copy(text: str):
 
 def _system_stats():
     import psutil
-    return {
-        "cpu_percent": psutil.cpu_percent(),
-        "ram_percent": psutil.virtual_memory().percent,
-        "disk_percent": psutil.disk_usage(Path.home().anchor or "/").percent,
-    }
+    return {"cpu_percent": psutil.cpu_percent(), "ram_percent": psutil.virtual_memory().percent, "disk_percent": psutil.disk_usage(Path.home().anchor or "/").percent}
 
 
 def _install_autonomous_processor_hook():
-    """Install the new brain before assistant.py instantiates CommandProcessor."""
     try:
         import core.assistant_components as components
         Processor = components.CommandProcessor
@@ -291,7 +256,6 @@ def _install_autonomous_processor_hook():
 
         def process(self, text):
             config = getattr(components, "_config", None) or {}
-            # Explicit opt-out keeps the legacy engine available for debugging.
             if config.get("agent_enabled", True) is False:
                 return original(self, text)
             try:
@@ -302,8 +266,6 @@ def _install_autonomous_processor_hook():
                     bridge_holder[key] = bridge
                 return bridge.process(text)
             except Exception:
-                # The new core must not brick the HUD. Legacy processing is the
-                # compatibility safety net while the migration is in progress.
                 return original(self, text)
 
         Processor.process = process
@@ -315,9 +277,4 @@ def _install_autonomous_processor_hook():
 
 _install_autonomous_processor_hook()
 
-__all__ = [
-    "ConversationAI",
-    "OllamaChatProvider",
-    "AutonomousCommandBridge",
-    "CONVERSATION_STYLE",
-]
+__all__ = ["ConversationAI", "OllamaChatProvider", "AutonomousCommandBridge", "CONVERSATION_STYLE"]
