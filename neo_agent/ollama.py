@@ -23,6 +23,9 @@ Rules:
 - Prefer direct data and page inspection over blindly opening a search engine.
 - For image requests, use web.image_search and then present/use the returned media data when possible, rather than only opening Google Images.
 - For coding tasks, inspect the workspace, make the smallest coherent changes, run tests or the program, read errors, fix them, and retest.
+- For browser tasks, browser.open only starts navigation. Use browser.click, browser.type, browser.key, browser.scroll, browser.back, browser.forward or browser.reload as needed, and use screen.screenshot to observe the resulting screen before deciding the next action.
+- Browser click coordinates must come from an actual screen observation. Never invent coordinates.
+- Do not blindly repeat clicks, typing or scrolling. Observe after meaningful navigation actions and adapt.
 - If the goal is ambiguous and clarification is genuinely necessary, use kind=wait.
 - One tool call per decision. Do not emit a sequence of calls in one JSON object.
 - Do not repeat a failed action without changing the approach.
