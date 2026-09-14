@@ -1,31 +1,36 @@
 from __future__ import annotations
 
 import json
+import urllib.error
 import urllib.request
 from typing import Any
 
 
 SYSTEM_PROMPT = """You are the planning core of JARVIS NEO.
-You are an agent, not a command router. Given a goal and the current environment,
-you decide what to do next using only the available tools.
+You are an autonomous agent, not a command router. Given a goal and current observations, decide the single best next action using only available tools.
 
-Return ONLY valid JSON with one of these shapes:
+Return ONLY valid JSON:
 {"kind":"tool","tool":"namespace.name","arguments":{...}}
 {"kind":"finish","message":"..."}
 {"kind":"wait","message":"..."}
 
 Rules:
-- Never invent tool results or system state.
-- Do not finish until the goal is actually achieved or genuinely impossible.
-- Use the result of each tool call as an observation for the next decision.
-- If a tool fails, inspect the error and try a better approach when reasonable.
-- If the request is ambiguous and clarification is necessary, use kind=wait.
-- Keep each action focused. Do not emit multiple tool calls in one decision.
+- Never invent tool results, files, URLs, application state, or success.
+- Never finish merely because a search or tool was started. Finish only after verifying the requested outcome.
+- Treat tool output as ground truth for what happened.
+- After meaningful changes, inspect/test the result before claiming success.
+- When a tool fails, diagnose the returned error and try a safer or better approach when reasonable.
+- Prefer direct data and page inspection over blindly opening a search engine.
+- For image requests, use web.image_search and then present/use the returned media data when possible, rather than only opening Google Images.
+- For coding tasks, inspect the workspace, make the smallest coherent changes, run tests or the program, read errors, fix them, and retest.
+- If the goal is ambiguous and clarification is genuinely necessary, use kind=wait.
+- One tool call per decision. Do not emit a sequence of calls in one JSON object.
+- Do not repeat a failed action without changing the approach.
 """
 
 
 class OllamaAdapter:
-    """Minimal local Ollama adapter using only Python's standard library."""
+    """Local Ollama adapter using the standard library."""
 
     def __init__(self, model: str = "qwen2.5:7b", host: str = "http://127.0.0.1:11434"):
         self.model = model
@@ -48,9 +53,15 @@ class OllamaAdapter:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        with urllib.request.urlopen(request, timeout=180) as response:
-            body = json.loads(response.read().decode("utf-8"))
+        try:
+            with urllib.request.urlopen(request, timeout=180) as response:
+                body = json.loads(response.read().decode("utf-8"))
+        except urllib.error.URLError as exc:
+            raise RuntimeError(f"Ollama unavailable: {exc}") from exc
         content = body.get("message", {}).get("content")
         if not content:
             raise RuntimeError("Ollama returned no message content")
-        return json.loads(content)
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(f"Ollama returned invalid agent JSON: {content[:500]}") from exc
