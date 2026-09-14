@@ -4,6 +4,18 @@ import re
 path = Path('assistant.py')
 text = path.read_text(encoding='utf-8')
 
+# This migration used to patch the monolithic assistant.py directly. The runtime
+# has since been split into core modules, so a missing legacy method means the
+# migration is already obsolete and should be a successful no-op.
+pattern = re.compile(
+    r'    def update_from_response\(self, message\):\n.*?(?=\nclass JarvisWindow\()',
+    re.S,
+)
+match = pattern.search(text)
+if not match:
+    print('Dynamic Space legacy method already migrated; nothing to expand')
+    raise SystemExit(0)
+
 # Make Dynamic Space a real contextual display, not a short preview.
 text = text.replace(
     'self.setMaximumHeight(220)',
@@ -11,10 +23,6 @@ text = text.replace(
     1,
 )
 
-pattern = re.compile(
-    r'    def update_from_response\(self, message\):\n.*?(?=\nclass JarvisWindow\()',
-    re.S,
-)
 replacement = '''    def update_from_response(self, message):
         """Display as much useful response content as possible automatically."""
         text = str(message or "").strip()
@@ -41,10 +49,6 @@ replacement = '''    def update_from_response(self, message):
         self.meta.setText(" · ".join(parts).upper())
         self.content.verticalScrollBar().setValue(0)
 '''
-
-match = pattern.search(text)
-if not match:
-    raise SystemExit('Dynamic Space method not found')
 
 new_text = text[:match.start()] + replacement + text[match.end():]
 path.write_text(new_text, encoding='utf-8')
