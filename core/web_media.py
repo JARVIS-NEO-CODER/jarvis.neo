@@ -28,49 +28,83 @@ if not _THEME_HOOK_INSTALLED:
         try:
             apply_theme(app)
         except Exception:
-            # Le thème est purement visuel et ne doit jamais bloquer JARVIS.
             pass
 
     QApplication.__init__ = _jarvis_neo_qapplication_init
     QApplication._jarvis_neo_theme_hook = True
 
 
-# Les commandes vocales "cherche une image/photo de ..." passaient auparavant
-# par la recherche Google classique. Le navigateur était donc bien ouvert,
-# mais sur le mauvais type de résultats. On normalise uniquement les URLs
-# Google Search contenant explicitement un terme média, sans toucher aux
-# recherches Web ordinaires.
+# Les recherches d'images ont leur propre intention. On conserve aussi un
+# hook de compatibilité pour les anciens appels qui ouvraient une URL Google
+# classique avec "image/photo" dans la requête.
 _ORIGINAL_WEBBROWSER_OPEN = webbrowser.open
+_ORIGINAL_WEBBROWSER_OPEN_NEW_TAB = getattr(webbrowser, "open_new_tab", None)
+_ORIGINAL_WEBBROWSER_OPEN_NEW = getattr(webbrowser, "open_new", None)
 _MEDIA_TERMS = re.compile(r"(?:^|\b)(?:image|images|photo|photos)(?:\b|$)", re.I)
 
 
-def _jarvis_media_browser_open(url, new=0, autoraise=True):
+def _normalize_media_url(url):
     try:
         parsed = urlparse(str(url))
         if parsed.netloc.lower().endswith("google.com") and parsed.path.rstrip("/") == "/search":
             params = parse_qs(parsed.query, keep_blank_values=True)
             query = unquote_plus(params.get("q", [""])[0]).strip()
             if _MEDIA_TERMS.search(query):
-                # Retire le mot "image/photo" de la requête pour obtenir le
-                # sujet réel, puis force le mode Images de Google.
                 media_query = _MEDIA_TERMS.sub(" ", query)
                 media_query = re.sub(r"\s+", " ", media_query).strip()
                 params["q"] = [media_query]
                 params["tbm"] = ["isch"]
                 params.setdefault("hl", ["fr"])
                 params.setdefault("safe", ["active"])
-                query_string = urlencode(params, doseq=True)
-                url = urlunparse(parsed._replace(query=query_string))
+                return urlunparse(parsed._replace(query=urlencode(params, doseq=True)))
     except Exception:
-        # La normalisation média est facultative : une URL invalide ne doit
-        # jamais empêcher l'ouverture normale du navigateur.
         pass
-    return _ORIGINAL_WEBBROWSER_OPEN(url, new=new, autoraise=autoraise)
+    return url
+
+
+def _jarvis_media_browser_open(url, new=0, autoraise=True):
+    return _ORIGINAL_WEBBROWSER_OPEN(_normalize_media_url(url), new=new, autoraise=autoraise)
+
+
+def _jarvis_media_browser_open_new_tab(url):
+    target = _normalize_media_url(url)
+    if _ORIGINAL_WEBBROWSER_OPEN_NEW_TAB is not None:
+        return _ORIGINAL_WEBBROWSER_OPEN_NEW_TAB(target)
+    return _ORIGINAL_WEBBROWSER_OPEN(target, new=2, autoraise=True)
+
+
+def _jarvis_media_browser_open_new(url):
+    target = _normalize_media_url(url)
+    if _ORIGINAL_WEBBROWSER_OPEN_NEW is not None:
+        return _ORIGINAL_WEBBROWSER_OPEN_NEW(target)
+    return _ORIGINAL_WEBBROWSER_OPEN(target, new=1, autoraise=True)
 
 
 if not getattr(webbrowser, "_jarvis_neo_media_patch", False):
     webbrowser.open = _jarvis_media_browser_open
+    webbrowser.open_new_tab = _jarvis_media_browser_open_new_tab
+    webbrowser.open_new = _jarvis_media_browser_open_new
     webbrowser._jarvis_neo_media_patch = True
+
+
+def _open_google_images(query: str) -> bool:
+    """Ouvre explicitement Google Images pour une recherche média."""
+    query = str(query).strip()
+    if not query:
+        return False
+    url = "https://www.google.com/search?" + urlencode({
+        "q": query,
+        "tbm": "isch",
+        "hl": "fr",
+        "safe": "active",
+    })
+    try:
+        return bool(_ORIGINAL_WEBBROWSER_OPEN_NEW_TAB(url)) if _ORIGINAL_WEBBROWSER_OPEN_NEW_TAB else bool(_ORIGINAL_WEBBROWSER_OPEN(url, new=2, autoraise=True))
+    except Exception:
+        try:
+            return bool(_ORIGINAL_WEBBROWSER_OPEN(url, new=2, autoraise=True))
+        except Exception:
+            return False
 
 
 @dataclass(frozen=True)
@@ -161,6 +195,11 @@ class WebMediaProvider:
         query = str(query).strip()
         if not query:
             raise ValueError("La recherche d'images ne peut pas être vide.")
+
+        # Point important : l'intention image connaît le contexte média ici.
+        # On n'attend donc pas de deviner ce contexte depuis l'URL Google.
+        _open_google_images(query)
+
         text = self._fetch(
             'https://www.bing.com/images/search?q=' + quote(query) + '&form=HDRSC2&setlang=fr-FR'
         )
