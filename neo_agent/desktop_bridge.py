@@ -51,6 +51,11 @@ def install() -> None:
     )
     model = str(cfg.get("model") or "llama3.2:3b")
     _RUNTIME = JarvisAgentRuntime(config=config, model=model, event=on_event)
+    # Recover persisted missions after a normal application restart.
+    try:
+        _RUNTIME.recover()
+    except Exception:
+        pass
 
     def ask_ai(self, text: str):
         goal = str(text).strip()
