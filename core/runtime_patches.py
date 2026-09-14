@@ -5,10 +5,10 @@ import json
 import os
 import re
 import subprocess
+import threading
 import types
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote_plus
 
 from .conversation_ai import ConversationAI
 from .data_registry import get_data
@@ -38,6 +38,56 @@ def _build_ai_messages(assistant: Any, text: str) -> list[dict[str, str]]:
     messages.extend(history)
     messages.append({"role": "user", "content": text})
     return messages
+
+
+def _extract_media_payloads(text: str):
+    """Récupère les commandes média avant qu'elles soient nettoyées pour le chat."""
+    for raw in re.findall(r"\{[^{}]*\}", str(text or ""), re.S):
+        try:
+            data = json.loads(raw)
+        except Exception:
+            continue
+        kind = str(data.get("kind") or "").lower().strip()
+        query = str(data.get("query") or "").strip()
+        if kind in {"image_search", "video_search"} and query:
+            yield kind, query
+
+
+def _dispatch_media_search(assistant: Any, text: str) -> None:
+    """Exécute réellement une recherche média sans bloquer la boucle Qt."""
+    payloads = list(_extract_media_payloads(text))
+    if not payloads:
+        return
+
+    dynamic_space = getattr(assistant, "dynamic_space", None)
+    if dynamic_space is None:
+        return
+
+    def worker() -> None:
+        try:
+            from .web_media import WebMediaProvider
+            provider = WebMediaProvider()
+            kind, query = payloads[0]
+            if kind == "image_search":
+                results = [item.as_dict() for item in provider.search_images(query, limit=8)]
+            else:
+                results = [item.as_dict() for item in provider.search_videos(query, limit=6)]
+        except Exception:
+            return
+
+        # Les widgets Qt doivent être mis à jour depuis le thread GUI.
+        try:
+            from PyQt6.QtCore import QTimer
+            QTimer.singleShot(
+                0,
+                lambda: dynamic_space.update_media_search(kind, results, query)
+                if results and getattr(assistant, "dynamic_space", None) is dynamic_space
+                else None,
+            )
+        except Exception:
+            return
+
+    threading.Thread(target=worker, daemon=True, name="jarvis-media-search").start()
 
 
 def _clean_media_response(text: str) -> str:
@@ -77,6 +127,9 @@ def _ask_ai(self: Any, text: str) -> str:
     assistant.signals.status_change.emit("RÉFLEXION")
     try:
         result = engine.chat(_build_ai_messages(assistant, text), temperature=0.2, max_tokens=2048)
+        # IMPORTANT : dispatcher le payload brut avant de le nettoyer. Après la
+        # division d'assistant.py, add_chat_msg ne reçoit plus le JSON interne.
+        _dispatch_media_search(assistant, result)
         assistant.signals.status_change.emit("OPÉRATIONNEL")
         return _clean_media_response(result)
     except Exception as exc:
