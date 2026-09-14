@@ -4,13 +4,14 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from core.application_resolver import ApplicationResolver
-from core.piper_tts_engine import MODEL_NAME
+from core.piper_tts_engine import MODEL_NAME, VOICE_NAME
 from core.voice_session_bridge import _try_direct_app_command
 
 
 class VoiceAndApplicationTests(unittest.TestCase):
-    def test_piper_uses_french_neural_model(self):
-        self.assertEqual(MODEL_NAME, "fr_FR-siwis-medium")
+    def test_pocket_tts_uses_french_neural_model(self):
+        self.assertEqual(MODEL_NAME, "french_24l")
+        self.assertEqual(VOICE_NAME, "estelle")
 
     def test_application_resolver_accepts_alias(self):
         resolver = ApplicationResolver({"calculatrice": "calc.exe"})
