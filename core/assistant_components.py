@@ -248,6 +248,14 @@ class ToolManager:
 class SpeechEngine:
     def __init__(self):
         self._lock = threading.Lock()
+        # Initialize the mixer once at startup instead of on the first answer.
+        # This removes a noticeable first-response audio delay.
+        if pygame:
+            try:
+                if not pygame.mixer.get_init():
+                    pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=512)
+            except Exception:
+                pass
         self.thread = threading.Thread(target=self._worker, daemon=True)
         self.thread.start()
 
@@ -269,7 +277,7 @@ class SpeechEngine:
             await communicate.save(str(path))
             if pygame:
                 try:
-                    if not pygame.mixer.get_init(): pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=1024)
+                    if not pygame.mixer.get_init(): pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=512)
                     pygame.mixer.music.load(str(path)); pygame.mixer.music.play()
                     while pygame.mixer.music.get_busy():
                         if stop_event.is_set() or _state.abort_requested: pygame.mixer.music.stop(); break
@@ -282,9 +290,19 @@ class SpeechEngine:
             try: path.unlink(missing_ok=True)
             except Exception: pass
 
-    def say(self, text):
+    def say(self, text, priority=False):
         clean = re.sub(r"\s+", " ", re.sub(r"https?://\S+", "", str(text))).strip()
-        if clean: tts_queue.put(clean)
+        if not clean:
+            return
+        if priority:
+            # Never make a fresh command wait behind queued startup/reminder audio.
+            while True:
+                try:
+                    tts_queue.get_nowait()
+                    tts_queue.task_done()
+                except queue.Empty:
+                    break
+        tts_queue.put(clean)
 
     def stop(self):
         stop_event.set()

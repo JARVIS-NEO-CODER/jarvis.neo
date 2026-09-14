@@ -258,6 +258,7 @@ import pyperclip
 import requests
 from core.conversation_ai import ConversationAI
 from core.web_media import WebMediaProvider
+from core.neo_theme import apply_theme
 
 try:
     import numpy as np
@@ -1237,7 +1238,7 @@ def command_worker():
             if not state.abort_requested:
                 memory.add_message("assistant", response)
                 signals.log_msg.emit("Jarvis", response)
-                speech.say(response)
+                speech.say(response, priority=True)
             else:
                 signals.log_msg.emit("Jarvis", "Opération interrompue.")
         except Exception as e:
@@ -1256,6 +1257,7 @@ def voice_worker():
     recognizer.dynamic_energy_threshold = True
     recognizer.pause_threshold = 0.8
     recognizer.phrase_threshold = 0.3
+    calibrated = False
 
     while True:
         if not state.mic_enabled or state.is_processing or state.is_speaking:
@@ -1265,7 +1267,9 @@ def voice_worker():
             with sr.Microphone() as source:
                 state.is_listening = True
                 signals.listening_change.emit(True)
-                recognizer.adjust_for_ambient_noise(source, duration=0.4)
+                if not calibrated:
+                    recognizer.adjust_for_ambient_noise(source, duration=0.25)
+                    calibrated = True
                 audio = recognizer.listen(source, timeout=3, phrase_time_limit=8)
 
                 # Niveau audio approximatif pour le visualiseur
@@ -1424,6 +1428,7 @@ def main():
     threading.Thread(target=retro_vision_worker, daemon=True).start()
     
     window = JarvisWindow()
+    apply_theme(QApplication.instance(), window)
     window.show()
 
     # HUD discret réellement attaché à la fenêtre principale.
