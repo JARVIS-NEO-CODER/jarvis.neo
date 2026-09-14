@@ -18,7 +18,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install system audio and GUI dependencies
-        run: sudo apt-get update && sudo apt-get install -y portaudio19-dev xvfb
+        run: sudo apt-get update && sudo apt-get install -y portaudio19-dev xvfb libegl1
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
