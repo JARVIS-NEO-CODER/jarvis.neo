@@ -67,6 +67,7 @@ from PyQt6.QtWidgets import (
 _state = _signals = _memory = _config = None
 _log = logging.getLogger("jarvis_neo")
 
+
 def configure_components(**dependencies):
     """Inject assistant runtime objects without importing assistant.py."""
     globals().update(dependencies)
@@ -79,6 +80,7 @@ def configure_components(**dependencies):
 
 def _cfg(): return _config or {}
 def _state_obj(): return _state
+
 
 def _activity(category, message, level="INFO"):
     try:
@@ -93,6 +95,38 @@ def _activity(category, message, level="INFO"):
         getattr(_log, level.lower(), _log.info)("%s: %s", category, message)
     except Exception:
         pass
+
+
+def _should_delegate_to_agent(text: str) -> bool:
+    """Detect natural multi-step/action requests before legacy regex intents.
+
+    The legacy intent table is intentionally kept for deterministic one-shot
+    commands such as ``ouvre chrome``. Compound requests, browser navigation,
+    coding tasks and explicit autonomous/recovery language must reach
+    CommandProcessor.ask_ai(), which the desktop bridge replaces with the real
+    autonomous runtime.
+    """
+    low = re.sub(r"\s+", " ", str(text).strip().lower())
+    if not low:
+        return False
+
+    compound_markers = (
+        " et ", " puis ", " ensuite ", " après ", " avant de ", ";",
+        " puis ", " pour ensuite ",
+    )
+    action_markers = (
+        "va sur ", "alle sur ", "navigue", "navigateur", "wikipedia",
+        "site web", "page web", "clique", "écris", "tape", "fais défiler",
+        "capture l'écran", "observe", "regarde", "analyse ce qui est affiché",
+        "crée un programme", "code ", "programme ", "projet ", "teste ",
+        "corrige", "répare", "retente", "réessaie", "jusqu'à ce que",
+        "automatiquement", "mission", "tâche longue",
+    )
+    if any(marker in low for marker in compound_markers):
+        return True
+    if any(marker in low for marker in action_markers):
+        return True
+    return False
 
 
 class CameraManager:
@@ -249,8 +283,6 @@ class ToolManager:
 class SpeechEngine:
     def __init__(self):
         self._lock = threading.Lock()
-        # Initialize the mixer once at startup instead of on the first answer.
-        # This removes a noticeable first-response audio delay.
         if pygame:
             try:
                 if not pygame.mixer.get_init():
@@ -296,7 +328,6 @@ class SpeechEngine:
         if not clean:
             return
         if priority:
-            # Never make a fresh command wait behind queued startup/reminder audio.
             while True:
                 try:
                     tts_queue.get_nowait()
@@ -352,6 +383,11 @@ class CommandProcessor:
         text = str(text).strip(); low = text.lower()
         if _state.alarm_triggered:
             return "⚠️ ALARME ACTIVE : code PIN requis."
+        # Critical routing rule: natural multi-step requests must reach the
+        # autonomous bridge before legacy regex intents can consume the first
+        # clause (e.g. "ouvre le navigateur et va sur Wikipédia").
+        if _should_delegate_to_agent(text):
+            return self.ask_ai(text)
         pieces = tools.plan(text)
         if len(pieces) > 1: return " | ".join(self.process(p) for p in pieces)
         for pattern, response in self.faq.items():
@@ -368,7 +404,7 @@ class CommandProcessor:
         _state.is_processing = True; _signals.status_change.emit("RÉFLEXION")
         try:
             history = _memory.get_history(12); memories = _memory.search_memory(text, 5)
-            model = globals().get("get_active_model", lambda **_: "llama3.2:3b")(vision=False)
+            model = globals().get('get_active_model', lambda **_: 'llama3.2:3b')(vision=False)
             messages = [{"role":"system","content":"Tu es J.A.R.V.I.S. NEO, un assistant personnel informatique. Réponds en français, brièvement et naturellement."}]
             messages.extend(history); messages.append({"role":"user","content":text})
             response = ollama.Client().chat(model=model, messages=messages)
@@ -428,133 +464,3 @@ class CommandProcessor:
             try: procs.append((p.info.get("cpu_percent") or 0,p.info.get("name") or "inconnu"))
             except Exception: pass
         procs.sort(reverse=True); return "Top processus CPU : " + " | ".join(f"{n} {c:.1f}%" for c,n in procs[:5])
-    def copy_text(self, text): pyperclip.copy(str(text)); return "Texte copié dans le presse-papiers."
-    def take_screenshot(self):
-        path=globals()["SNAPSHOTS_DIR"] / f"shot_{int(time.time())}.png"; pyautogui.screenshot(str(path)); return f"Capture enregistrée : {path.name}."
-    def analyze_screen(self): return "Analyse écran disponible via le moteur de vision." if ollama else "Modules de vision non disponibles."
-    def toggle_security(self, mode):
-        _state.security_mode = mode in ("on","activer"); return "Protocoles de sécurité activés." if _state.security_mode else "Protocoles de sécurité désarmés."
-    def toggle_passive_listening(self, mode): _state.passive_listening=mode in ("on","activer"); return "Écoute passive " + ("activée." if _state.passive_listening else "désactivée.")
-    def set_model_tier(self, tier): return globals().get("apply_model_tier", lambda _: None)(tier) or "Mode IA inconnu."
-    def get_current_model_info(self): return f"Mode {getattr(_state,'current_model_tier','moyen')} — modèle {getattr(_state,'current_model','inconnu')}."
-    def add_task(self, content): _memory.add_task(content.strip()); return "Tâche enregistrée."
-    def list_tasks(self): return str(_memory.get_tasks()) if _memory.get_tasks() else "Aucune tâche en attente."
-    def complete_task(self, task_id): _memory.complete_task(int(task_id)); return "Tâche validée."
-    def list_memos(self): return str(_memory.get_memos(5)) if _memory.get_memos(5) else "Aucun mémo."
-    def clear_chat(self): _signals.log_msg.emit("Système","__CLEAR_CHAT__"); return "Interface nettoyée."
-    def load_plugin(self,name): return plugin_manager.load_plugin(name)[1]
-    def unload_plugin(self,name): return plugin_manager.unload_plugin(name)[1]
-    def list_plugins(self): return ", ".join(plugin_manager.manifests) if plugin_manager.manifests else "Aucun plugin détecté."
-    def get_help(self): return "Commandes : météo, heure, date, ouvre [app], cherche [texte], tâches, mémos, batterie, uptime, processus, sécurité on/off."
-
-
-class ModuleWindow(QFrame):
-    def __init__(self, title, content_widget, parent=None):
-        super().__init__(parent); self.setWindowTitle(title); self.resize(580,440)
-        self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.WindowStaysOnTopHint)
-        layout=QVBoxLayout(self); header=QHBoxLayout(); header.addWidget(QLabel(f"⚡ {title.upper()}")); header.addStretch()
-        close=QPushButton("✕"); close.setFixedSize(28,28); close.clicked.connect(self.close); header.addWidget(close); layout.addLayout(header); layout.addWidget(content_widget)
-
-class SecurityModuleWidget(QWidget):
-    def __init__(self,parent=None):
-        super().__init__(parent); layout=QVBoxLayout(self); self.preview=QLabel("Caméra inactive"); self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter); layout.addWidget(self.preview)
-        self.timer=QTimer(self); self.timer.timeout.connect(self.update_frame); self.timer.start(150)
-    def update_frame(self):
-        frame=camera_manager.get_frame()
-        if frame is not None and cv2 is not None:
-            rgb=cv2.cvtColor(frame,cv2.COLOR_BGR2RGB); h,w,ch=rgb.shape; self.preview.setPixmap(QPixmap.fromImage(QImage(rgb.data,w,h,ch*w,QImage.Format.Format_RGB888)).scaled(self.preview.size(),Qt.AspectRatioMode.KeepAspectRatio))
-    def closeEvent(self,event): self.timer.stop(); event.accept()
-
-class SystemMonitorWidget(QWidget):
-    def __init__(self,parent=None):
-        super().__init__(parent); layout=QVBoxLayout(self); self.text=QTextEdit(); self.text.setReadOnly(True); layout.addWidget(self.text); self.timer=QTimer(self); self.timer.timeout.connect(self.refresh); self.timer.start(2000)
-    def refresh(self):
-        m=globals().get("collect_system_metrics",lambda:{"cpu_percent":0,"ram_percent":0,"disk_percent":0})(); self.text.append(f"CPU {m['cpu_percent']}% | RAM {m['ram_percent']}% | DISQUE {m['disk_percent']}%")
-    def closeEvent(self,event): self.timer.stop(); event.accept()
-
-class RetroVisionWidget(QWidget):
-    def __init__(self,parent=None):
-        super().__init__(parent); layout=QVBoxLayout(self); self.table=QTableWidget(); self.table.setColumnCount(2); self.table.setHorizontalHeaderLabels(["Horodatage","Analyse"]); self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch); layout.addWidget(self.table); self.refresh_data()
-    def refresh_data(self):
-        rows=_memory.get_recent_retro_vision(20); self.table.setRowCount(len(rows));
-        for i,(summary,timestamp) in enumerate(rows): self.table.setItem(i,0,QTableWidgetItem(str(timestamp))); self.table.setItem(i,1,QTableWidgetItem(str(summary)))
-
-class MacrosWidget(QWidget):
-    def __init__(self,parent=None):
-        super().__init__(parent); layout=QVBoxLayout(self); self.input=QTextEdit(); self.input.setPlaceholderText("Actions de routine"); layout.addWidget(self.input); btn=QPushButton("Enregistrer"); btn.clicked.connect(self.save); layout.addWidget(btn)
-    def save(self):
-        _signals.log_msg.emit("Macros", "Routine enregistrée.")
-
-class NtfySettingsWidget(QWidget):
-    def __init__(self,parent=None):
-        super().__init__(parent); layout=QVBoxLayout(self); layout.addWidget(QLabel(str(globals().get("NTFY_URL","ntfy.sh")))); btn=QPushButton("Copier"); btn.clicked.connect(lambda:pyperclip.copy(globals().get("NTFY_URL",""))); layout.addWidget(btn)
-
-class HolographicFrame(QFrame):
-    def __init__(self,parent=None): super().__init__(parent); self.setStyleSheet("QFrame { background: #020617; border: 1px solid #00f3ff; border-radius: 14px; }")
-
-class GlowButton(QPushButton):
-    def __init__(self,text,color=None,parent=None): super().__init__(text,parent); self._color=color or QColor(0,243,255); self._apply_style()
-    def _apply_style(self): self.setStyleSheet(f"QPushButton {{ color:{self._color.name()}; background:#08132b; border:1px solid {self._color.name()}; border-radius:7px; padding:7px; font-weight:bold; }} QPushButton:hover {{ background:#10244a; }}")
-
-class TechProgressBar(QProgressBar):
-    def __init__(self,color=None,parent=None): super().__init__(parent); self.setTextVisible(False); self.setMaximum(100); self.setFixedHeight(7)
-
-class AudioLevelBar(QProgressBar):
-    def __init__(self,parent=None): super().__init__(parent); self.setRange(0,100); self.setTextVisible(False); self.setFixedHeight(7)
-    def set_level(self,level): self.setValue(int(max(0,min(1,level))*100))
-
-class ArcReactor(QFrame):
-    def __init__(self,parent=None): super().__init__(parent); self.label=QLabel("◉ ONLINE",self); self.label.setAlignment(Qt.AlignmentFlag.AlignCenter); layout=QVBoxLayout(self); layout.addWidget(self.label); self.setFixedSize(150,70)
-
-class PrivacyActivityPanel(QFrame):
-    def __init__(self,parent=None):
-        super().__init__(parent); layout=QVBoxLayout(self); self.label=QLabel(); layout.addWidget(self.label); self.timer=QTimer(self); self.timer.timeout.connect(self.refresh); self.timer.start(1000); self.refresh()
-    def refresh(self):
-        self.label.setText(f"MIC {'ON' if _state.mic_enabled else 'OFF'} · CAM {'ON' if _state.camera_enabled else 'OFF'} · WEB {'ON' if _state.web_enabled else 'OFF'}")
-
-class JarvisWindow(QMainWindow):
-    def __init__(self):
-        super().__init__(); self.setWindowTitle(globals().get("APP_NAME","J.A.R.V.I.S. NEO")); self.resize(1150,750)
-        central=HolographicFrame(); self.setCentralWidget(central); root=QHBoxLayout(central)
-        left=QVBoxLayout(); root.addLayout(left,1); right=QVBoxLayout(); root.addLayout(right,2)
-        self.status_label=QLabel("STATUT: NOMINAL"); left.addWidget(self.status_label); left.addWidget(PrivacyActivityPanel()); left.addWidget(ArcReactor())
-        self.btn_camera=GlowButton("CAM OFF"); self.btn_camera.clicked.connect(self.toggle_camera); left.addWidget(self.btn_camera)
-        self.btn_retro=GlowButton("VISION OFF"); left.addWidget(self.btn_retro); self.btn_web=GlowButton("WEB LOCAL OFF"); left.addWidget(self.btn_web)
-        self.btn_mic=GlowButton("🎤 MICRO ON"); self.btn_mic.clicked.connect(self.toggle_mic); left.addWidget(self.btn_mic)
-        left.addStretch(); exit_btn=GlowButton("DÉCONNECTER",QColor(255,50,50)); exit_btn.clicked.connect(QCoreApplication.quit); left.addWidget(exit_btn)
-        self.chat_display=QTextEdit(); self.chat_display.setReadOnly(True); right.addWidget(self.chat_display)
-        self.dynamic_space = globals().get("DynamicSpaceWidget", None)
-        if self.dynamic_space: self.dynamic_space=self.dynamic_space(); right.addWidget(self.dynamic_space)
-        row=QHBoxLayout(); self.cmd_input=QLineEdit(); self.cmd_input.setPlaceholderText("Entrez une directive..."); self.cmd_input.returnPressed.connect(self.handle_input); row.addWidget(self.cmd_input); send=GlowButton("⚡"); send.clicked.connect(self.handle_input); row.addWidget(send); right.addLayout(row)
-        signals.log_msg.connect(self.add_chat_msg); signals.status_change.connect(self.update_status); signals.audio_level.connect(self._on_audio_level); self.audio_bar=AudioLevelBar(); left.addWidget(self.audio_bar)
-    def handle_input(self):
-        text=self.cmd_input.text().strip()
-        if text: signals.log_msg.emit("Vous",text); command_queue.put(text); self.cmd_input.clear()
-    def add_chat_msg(self,sender,msg):
-        if msg=="__CLEAR_CHAT__": self.chat_display.clear(); return
-        safe_sender = html.escape(str(sender))
-        safe_msg = html.escape(str(msg)).replace(chr(10), "<br>")
-        self.chat_display.append(f"<b>{safe_sender}</b>: {safe_msg}")
-        self.chat_display.verticalScrollBar().setValue(self.chat_display.verticalScrollBar().maximum())
-    def update_status(self,status): self.status_label.setText(f"STATUT: {status}")
-    def _on_audio_level(self,level): self.audio_bar.set_level(level)
-    def toggle_mic(self):
-        _state.mic_enabled=not _state.mic_enabled; self.btn_mic.setText("🎤 MICRO ON" if _state.mic_enabled else "🎤 MICRO OFF")
-    def toggle_camera(self):
-        _state.camera_enabled=not _state.camera_enabled
-        if _state.camera_enabled and not camera_manager.enable(): _state.camera_enabled=False
-        if not _state.camera_enabled: camera_manager.disable()
-        self.btn_camera.setText("CAM ON" if _state.camera_enabled else "CAM OFF")
-    def apply_size_preset(self,preset):
-        sizes={"compact":(820,580),"normal":(1150,750),"large":(1450,900),"wide":(1600,720)}; self.resize(*sizes.get(preset,sizes["normal"]))
-    def toggle_minimize_window(self): self.showMinimized()
-    def _abort_operations(self): _state.abort_requested=True
-    def show_chat_view(self): pass
-    def load_url_in_browser(self,url):
-        import webbrowser; webbrowser.open(url)
-
-# Runtime aliases are created by assistant.py after configure_components().
-camera_manager = plugin_manager = tools = speech = processor = None
-command_queue = queue.Queue(); tts_queue = queue.Queue(); stop_event = threading.Event()
-
-__all__ = ["CameraManager","PluginManager","ToolManager","SpeechEngine","CommandProcessor","ModuleWindow","SecurityModuleWidget","SystemMonitorWidget","RetroVisionWidget","MacrosWidget","NtfySettingsWidget","HolographicFrame","GlowButton","TechProgressBar","AudioLevelBar","ArcReactor","PrivacyActivityPanel","JarvisWindow","configure_components"]
