@@ -26,11 +26,11 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Extract legacy MemoryManager
+      - name: Modularize assistant.py
         run: python tools/split_assistant.py
 
       - name: Validate syntax
-        run: python -m py_compile assistant.py core/legacy_memory.py
+        run: python -m py_compile assistant.py core/legacy_memory.py core/assistant_components.py
 
       - name: Commit extraction
         run: |
@@ -40,6 +40,6 @@ jobs:
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add assistant.py core/legacy_memory.py tools/split_assistant.py .github/workflows/split-assistant.yml
-          git commit -m 'refactor: extract legacy memory manager from assistant'
+          git add assistant.py core/legacy_memory.py core/assistant_components.py tools/split_assistant.py .github/workflows/split-assistant.yml
+          git commit -m 'refactor: modularize assistant components'
           git push
