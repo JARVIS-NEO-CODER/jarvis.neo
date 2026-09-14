@@ -17,6 +17,16 @@ except Exception:
     # desktop core from starting if a dependency is temporarily unavailable.
     pass
 
+# Importing the package installs the expanded desktop HUD before assistant.py
+# asks for JarvisWindow from core.assistant_components.
+try:
+    from .hud import install as _install_hud
+    _install_hud()
+except Exception:
+    # The HUD is an optional presentation layer. Keep the legacy window usable
+    # if a GUI dependency is unavailable during import.
+    pass
+
 __all__ = [
     "NeoMemory",
     "ActionDefinition", "ActionEngine", "ActionResult", "ControlMode",
