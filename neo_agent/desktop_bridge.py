@@ -11,6 +11,69 @@ _RUNTIME: JarvisAgentRuntime | None = None
 _INSTALLED = False
 
 
+def _cockpit_dispatch(assistant: Any, callback) -> None:
+    """Run a cockpit UI callback safely on the Qt GUI thread."""
+    try:
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(0, callback)
+        return
+    except Exception:
+        pass
+    try:
+        callback()
+    except Exception:
+        pass
+
+
+def _get_cockpit(assistant: Any):
+    cockpit = getattr(assistant, "_neo_cockpit", None)
+    if cockpit is not None:
+        return cockpit
+    try:
+        from ui.cockpit_bridge import install
+        install(assistant)
+        opener = getattr(assistant, "_neo_open_cockpit", None)
+        if callable(opener):
+            opener()
+        return getattr(assistant, "_neo_cockpit", None)
+    except Exception:
+        return None
+
+
+def _show_agent_event(assistant: Any, state: str, task: dict[str, Any]) -> None:
+    """Surface autonomous work in the NEO cockpit instead of the legacy chat."""
+    def render() -> None:
+        cockpit = _get_cockpit(assistant)
+        if cockpit is None:
+            return
+        try:
+            if not cockpit.isVisible():
+                cockpit.show()
+            cockpit.raise_()
+            cockpit.activateWindow()
+            goal = str(task.get("goal") or "Mission autonome")
+            context = task.get("context") or {}
+            if state == "completed":
+                result = str(context.get("result") or "Mission terminée.")
+                try:
+                    payload = json.loads(result)
+                    if isinstance(payload, dict) and payload.get("kind"):
+                        result = f"Résultat {payload.get('kind')} : {payload.get('query') or payload.get('message') or 'opération terminée'}"
+                except Exception:
+                    pass
+                cockpit.show_dynamic_panel("agent-result", "MISSION TERMINÉE", result, "success", "neo-agent")
+            elif state == "failed":
+                cockpit.show_dynamic_panel("agent-result", "MISSION ÉCHOUÉE", "La mission autonome a échoué. Consultez l'historique de tâche.", "error", "neo-agent")
+            elif state == "waiting_approval":
+                cockpit.show_dynamic_panel("agent-result", "AUTORISATION REQUISE", "Une action nécessite une autorisation avant de poursuivre.", "warning", "neo-agent")
+            else:
+                cockpit.show_dynamic_panel("agent-progress", "MISSION AUTONOME", goal, "info", "neo-agent")
+        except Exception:
+            pass
+
+    _cockpit_dispatch(assistant, render)
+
+
 def install() -> None:
     global _RUNTIME, _INSTALLED
     if _INSTALLED:
@@ -29,11 +92,10 @@ def install() -> None:
     def on_event(event: str, payload: dict[str, Any]) -> None:
         task = payload.get("task", {})
         state = task.get("state")
-        context = task.get("context") or {}
+        if state:
+            _show_agent_event(components._neo_assistant if hasattr(components, "_neo_assistant") else None, state, task)
         try:
-            if state == "completed":
-                components._signals.log_msg.emit("Jarvis", str(context.get("result") or "Mission terminée."))
-            elif state == "failed":
+            if state == "failed":
                 components._signals.log_msg.emit("Jarvis", "Mission autonome échouée. Consultez l'historique de tâche.")
             elif state == "waiting_approval":
                 components._signals.log_msg.emit("Jarvis", "Autorisation requise pour poursuivre la mission.")
@@ -51,7 +113,6 @@ def install() -> None:
     )
     model = str(cfg.get("model") or "llama3.2:3b")
     _RUNTIME = JarvisAgentRuntime(config=config, model=model, event=on_event)
-    # Recover persisted missions after a normal application restart.
     try:
         _RUNTIME.recover()
     except Exception:
@@ -63,17 +124,13 @@ def install() -> None:
             return "Directive vide."
         try:
             task = _RUNTIME.submit(goal, context={"source": "hud", "language": "fr-FR"}, background=True)
+            _show_agent_event(getattr(self, "_neo_assistant", None), "running", task.to_dict())
             return f"Mission autonome lancée. ID : {task.id}"
         except Exception:
             return original(self, text)
 
     def image_search(self, query: str):
-        """Return a media payload so Dynamic Space performs the real search.
-
-        The legacy implementation launched Google and discarded its results.
-        Dynamic Space already knows how to render the structured payload, so
-        the command now becomes a real result-producing operation.
-        """
+        """Return a media payload without opening the legacy Dynamic Space."""
         query = str(query).strip()
         if not query:
             return "Sujet de recherche d'images manquant."
