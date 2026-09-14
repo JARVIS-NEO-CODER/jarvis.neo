@@ -52,45 +52,42 @@ def ensure_runtime_sync(source):
     return source.replace(marker,sync,1),True
 
 
-def _replace_once(text: str, old: str, new: str, label: str) -> tuple[str, bool]:
-    if old not in text:
-        return text, False
+def _replace_once(text: str, old: str, new: str) -> tuple[str, bool]:
+    if old not in text: return text, False
     return text.replace(old, new, 1), True
 
 
 def apply_component_fixes() -> bool:
     """Apply small, source-controlled fixes to the generated component module."""
-    if not COMPONENT_TARGET.exists():
-        return False
+    if not COMPONENT_TARGET.exists(): return False
     text = COMPONENT_TARGET.read_text(encoding="utf-8")
     original = text
 
-    text, _ = _replace_once(
-        text,
-        "import time\nfrom pathlib import Path\n",
-        "import time\nfrom pathlib import Path\nfrom urllib.parse import quote_plus\n",
-        "quote_plus import",
-    )
+    if "from urllib.parse import quote_plus" not in text:
+        text = text.replace("from pathlib import Path\n", "from pathlib import Path\nfrom urllib.parse import quote_plus\n", 1)
 
-    old_intent = 'r"ouvre\\s+(.+)": self.open_app, r"ferme\\s+(.+)|tue\\s+(.+)": self.kill_app,\n            r"cherche\\s+(.+)": self.web_search, r"note\\s+(.+)": self.take_note,'
-    new_intent = 'r"ouvre\\s+(.+)": self.open_app, r"ferme\\s+(.+)|tue\\s+(.+)": self.kill_app,\n            r"(?:cherche|recherche|trouve|montre)\\s+(?:des?\\s+)?(?:images?|photos?)\\s+(?:de|sur|pour)?\\s*(.+)": self.image_search,\n            r"cherche\\s+(.+)": self.web_search, r"note\\s+(.+)": self.take_note,'
-    text, _ = _replace_once(text, old_intent, new_intent, "image intent")
+    intent = 'r"(?:cherche|recherche|trouve|montre)\\s+(?:des?\\s+)?(?:images?|photos?)\\s+(?:de|sur|pour)?\\s*(.+)": self.image_search,'
+    if intent not in text:
+        marker = '            r"cherche\\s+(.+)": self.web_search, r"note\\s+(.+)": self.take_note,'
+        replacement = '            r"(?:cherche|recherche|trouve|montre)\\s+(?:des?\\s+)?(?:images?|photos?)\\s+(?:de|sur|pour)?\\s*(.+)": self.image_search,\n            r"cherche\\s+(.+)": self.web_search, r"note\\s+(.+)": self.take_note,'
+        text, _ = _replace_once(text, marker, replacement)
 
-    old_web = '    def web_search(self, query):\n        url = f"https://www.google.com/search?q={str(query).strip().replace(\' \',\'+\')}"; _signals.open_url.emit(url)\n        return f"Recherche web exécutée pour : {query}"\n'
-    new_web = '    def image_search(self, query):\n        query = str(query).strip()\n        if not query:\n            return "Sujet de recherche d\\\'images manquant."\n        try:\n            from .web_media import WebMediaProvider\n            WebMediaProvider().search_images(query, limit=8)\n            return f"Recherche d\\\'images lancée pour « {query} »."\n        except Exception as exc:\n            _log.warning("Recherche images échouée: %s", exc)\n            url = "https://www.google.com/search?" + quote_plus("q=" + query) + "&tbm=isch&hl=fr&safe=active"\n            _signals.open_url.emit(url)\n            return f"Recherche d\\\'images lancée pour « {query} »."\n\n    def web_search(self, query):\n        query = str(query).strip()\n        url = "https://www.google.com/search?q=" + quote_plus(query)\n        _signals.open_url.emit(url)\n        return f"Recherche web exécutée pour : {query}"\n'
-    text, _ = _replace_once(text, old_web, new_web, "web search")
+    if "    def image_search(self, query):" not in text:
+        marker = "    def web_search(self, query):\n"
+        method = '''    def image_search(self, query):\n        query = str(query).strip()\n        if not query:\n            return "Sujet de recherche d'images manquant."\n        try:\n            from .web_media import WebMediaProvider\n            WebMediaProvider().search_images(query, limit=8)\n        except Exception as exc:\n            _log.warning("Recherche images échouée: %s", exc)\n            url = "https://www.google.com/search?q=" + quote_plus(query) + "&tbm=isch&hl=fr&safe=active"\n            _signals.open_url.emit(url)\n        return f"Recherche d'images lancée pour « {query} »."\n\n'''
+        text, _ = _replace_once(text, marker, method + marker)
+
+    old_web_prefix = '    def web_search(self, query):\n        url = f"https://www.google.com/search?q='
+    if old_web_prefix in text:
+        start = text.index(old_web_prefix)
+        end = text.index('    def take_note(', start)
+        new_web = '''    def web_search(self, query):\n        query = str(query).strip()\n        url = "https://www.google.com/search?q=" + quote_plus(query)\n        _signals.open_url.emit(url)\n        return f"Recherche web exécutée pour : {query}"\n\n'''
+        text = text[:start] + new_web + text[end:]
 
     text, _ = _replace_once(
         text,
         '    def save(self): signals.log_msg.emit("Macros","Routine enregistrée.")\n',
         '    def save(self):\n        _signals.log_msg.emit("Macros", "Routine enregistrée.")\n',
-        "macro signal",
-    )
-    text, _ = _replace_once(
-        text,
-        '        self.chat_display.append(f"<b>{html.escape(str(sender))}</b>: {html.escape(str(msg)).replace(chr(10),\'<br>\')}")\n',
-        '        safe_sender = html.escape(str(sender))\n        safe_msg = html.escape(str(msg)).replace(chr(10), "<br>")\n        self.chat_display.append(f"<b>{safe_sender}</b>: {safe_msg}")\n',
-        "chat escaping",
     )
 
     if text != original:
@@ -104,11 +101,10 @@ def apply_web_security_fixes(source: str) -> tuple[str, bool]:
     original = source
     old = '''            function appendMsg(sender, text) {\n                const div = document.createElement('div');\n                div.className = 'msg ' + (sender.includes('Vous') ? 'user' : 'jarvis');\n                div.innerHTML = `<b>${sender}:</b> ${text}`;\n                chat.appendChild(div);\n                chat.scrollTop = chat.scrollHeight;\n            }'''
     new = '''            function appendMsg(sender, text) {\n                const div = document.createElement('div');\n                div.className = 'msg ' + (String(sender).includes('Vous') ? 'user' : 'jarvis');\n                const name = document.createElement('b');\n                name.textContent = String(sender) + ': ';\n                const body = document.createTextNode(String(text));\n                div.appendChild(name);\n                div.appendChild(body);\n                chat.appendChild(div);\n                chat.scrollTop = chat.scrollHeight;\n            }'''
-    source, _ = _replace_once(source, old, new, "dashboard XSS")
-
+    source, _ = _replace_once(source, old, new)
     old_ws = "            const ws = new WebSocket(`ws://${location.host}/ws?token=${encodeURIComponent(jarvisToken || '')}`);"
     new_ws = "            const wsScheme = location.protocol === 'https:' ? 'wss' : 'ws';\n            const ws = new WebSocket(`${wsScheme}://${location.host}/ws?token=${encodeURIComponent(jarvisToken || '')}`);"
-    source, _ = _replace_once(source, old_ws, new_ws, "secure websocket")
+    source, _ = _replace_once(source, old_ws, new_ws)
     return source, source != original
 
 
