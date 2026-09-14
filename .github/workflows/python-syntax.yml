@@ -1,0 +1,33 @@
+name: Python syntax
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**/*.py'
+      - '.github/workflows/python-syntax.yml'
+  pull_request:
+    paths:
+      - '**/*.py'
+      - '.github/workflows/python-syntax.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Compile all Python files
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find . -type f -name '*.py' -not -path './.git/*' -print)
+          python -m py_compile "${files[@]}"
