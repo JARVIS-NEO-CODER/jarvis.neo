@@ -112,7 +112,10 @@ Règles:
 - Ne termine que lorsque le but est atteint ou objectivement impossible.
 - Si une information indispensable manque, utilise wait.
 - Pour une demande d'image, utilise web.image_search et exploite les résultats retournés. Ne te contente jamais d'ouvrir Google Images.
-- Pour une recherche web, utilise web.search puis web.fetch lorsque le contenu de la page est nécessaire. browser.open sert uniquement quand l'utilisateur demande réellement d'ouvrir une page dans son navigateur.
+- Pour une recherche web, utilise web.search puis web.fetch lorsque le contenu de la page est nécessaire. browser.open sert uniquement à démarrer une navigation réellement demandée ou nécessaire.
+- Une navigation interactive ne s'arrête pas à browser.open : utilise browser.click, browser.type, browser.key, browser.scroll, browser.back, browser.forward ou browser.reload, puis screen.screenshot pour observer l'écran avant de choisir la suite.
+- N'invente jamais des coordonnées de clic. Elles doivent provenir d'une capture d'écran réelle.
+- Après une action visuelle importante, observe avant de continuer. Si l'état n'est pas celui attendu, adapte la stratégie.
 - Ne transforme pas automatiquement une demande d'image en ouverture d'un onglet Google.
 - Une action de navigation doit produire une observation exploitable avant de décider de la suite.
 """
@@ -236,49 +239,3 @@ def _screenshot():
     path = base / f"agent_{int(time.time())}.png"
     pyautogui.screenshot(str(path))
     return {"path": str(path)}
-
-
-def _copy(text: str):
-    import pyperclip
-    pyperclip.copy(str(text))
-    return {"copied": True}
-
-
-def _system_stats():
-    import psutil
-    return {"cpu_percent": psutil.cpu_percent(), "ram_percent": psutil.virtual_memory().percent, "disk_percent": psutil.disk_usage(Path.home().anchor or "/").percent}
-
-
-def _install_autonomous_processor_hook():
-    try:
-        import core.assistant_components as components
-        Processor = components.CommandProcessor
-        if getattr(Processor, "_neo_autonomous_hook", False):
-            return
-        original = Processor.process
-        bridge_holder: dict[int, AutonomousCommandBridge] = {}
-
-        def process(self, text):
-            config = getattr(components, "_config", None) or {}
-            if config.get("agent_enabled", True) is False:
-                return original(self, text)
-            try:
-                key = id(self)
-                bridge = bridge_holder.get(key)
-                if bridge is None:
-                    bridge = AutonomousCommandBridge(config)
-                    bridge_holder[key] = bridge
-                return bridge.process(text)
-            except Exception:
-                return original(self, text)
-
-        Processor.process = process
-        Processor._neo_autonomous_hook = True
-        Processor._neo_legacy_process = original
-    except Exception:
-        pass
-
-
-_install_autonomous_processor_hook()
-
-__all__ = ["ConversationAI", "OllamaChatProvider", "AutonomousCommandBridge", "CONVERSATION_STYLE"]
