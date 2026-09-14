@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import threading
+from pathlib import Path
 from typing import Any
 
 from .ai_provider_router import AIProviderRouter
@@ -95,7 +96,6 @@ class ConversationAI:
 
     @staticmethod
     def _with_style(messages):
-        """Add a focused conversational policy without destroying the caller's context."""
         items = list(messages or [])
         style = {"role": "system", "content": CONVERSATION_STYLE}
         if items and items[0].get("role") == "system":
@@ -106,11 +106,7 @@ class ConversationAI:
         return [style, *items]
 
     def chat(self, messages, *, temperature=0.2, max_tokens=2048):
-        return self.router.chat(
-            self._with_style(messages),
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
+        return self.router.chat(self._with_style(messages), temperature=temperature, max_tokens=max_tokens)
 
     @property
     def status(self):
@@ -118,8 +114,6 @@ class ConversationAI:
 
 
 class _AgentLLMAdapter:
-    """Turn the existing provider router into the JSON decision interface."""
-
     SYSTEM = """Tu es le cerveau autonome de J.A.R.V.I.S. NEO.
 Tu ne réponds PAS en conversation libre. Tu dois choisir l'action suivante.
 Réponds avec un unique objet JSON valide, sans markdown.
@@ -142,7 +136,7 @@ Règles:
 
     def decide(self, context: dict[str, Any]) -> dict[str, Any] | str:
         payload = json.dumps(context, ensure_ascii=False, default=str)
-        raw = self.conversation.router.chat(
+        return self.conversation.router.chat(
             [
                 {"role": "system", "content": self.SYSTEM},
                 {"role": "user", "content": payload},
@@ -150,20 +144,12 @@ Règles:
             temperature=0.1,
             max_tokens=1400,
         )
-        return raw
 
 
 class AutonomousCommandBridge:
-    """Connect the new AgentLoop to the historical CommandProcessor.
-
-    The bridge is lazy so importing conversation_ai never starts an agent or
-    touches hardware. Existing regex commands remain as a compatibility
-    fallback when the autonomous path cannot run.
-    """
-
-    def __init__(self, config: dict[str, Any], conversation: ConversationAI):
+    def __init__(self, config: dict[str, Any], conversation: ConversationAI | None = None):
         self.config = config
-        self.conversation = conversation
+        self.conversation = conversation or ConversationAI(config)
         self.runtime = None
         self._lock = threading.Lock()
 
@@ -173,102 +159,78 @@ class AutonomousCommandBridge:
         with self._lock:
             if self.runtime is not None:
                 return self.runtime
+            from neo_agent.agent_loop import AgentLoop
             from neo_agent.models import AgentConfig
+            from neo_agent.ollama import OllamaAdapter
             from neo_agent.permissions import PermissionMode
-            from neo_agent.runtime import JarvisAgentRuntime
+            from neo_agent.task_manager import TaskManager
             from neo_agent.tools import ToolRegistry
             import core.assistant_components as components
 
-            mode_value = int(self.config.get("agent_permission_mode", 3))
-            mode_value = max(1, min(3, mode_value))
+            mode_value = max(1, min(3, int(self.config.get("agent_permission_mode", 3))))
+            cwd = str(Path(self.config.get("agent_cwd", ".")).expanduser().resolve())
+            state_dir = str(Path(self.config.get("agent_state_dir", "~/.jarvis_neo/agent")).expanduser())
             agent_config = AgentConfig(
                 permission_mode=PermissionMode(mode_value),
-                cwd=str(self.config.get("agent_cwd", ".")),
-                state_dir=str(self.config.get("agent_state_dir", "~/.jarvis_neo/agent")),
+                cwd=cwd,
+                state_dir=state_dir,
                 max_steps=int(self.config.get("agent_max_steps", 24)),
             )
 
-            def event(kind, data):
-                try:
-                    state = getattr(components, "_state", None)
-                    signals = getattr(components, "_signals", None)
-                    if signals is not None and kind.startswith("task."):
-                        signals.status_change.emit("AGENT")
-                    if state is not None:
-                        state.is_processing = kind != "task.updated"
-                except Exception:
-                    pass
-
-            runtime = JarvisAgentRuntime(
-                config=agent_config,
-                model=self.config.get("model", "llama3.2:3b"),
-                event=event,
-            )
-
-            tools = runtime.agent.tools
-            legacy_tools = getattr(components, "_legacy_tools", None) or getattr(components, "tools", None)
+            policy = None
+            from neo_agent.permissions import PermissionPolicy
+            policy = PermissionPolicy(agent_config.permission_mode)
+            tools = ToolRegistry(policy, cwd)
+            legacy_tools = getattr(components, "tools", None)
             if legacy_tools is not None:
                 self._register_legacy_tools(tools, legacy_tools)
 
-            self.runtime = runtime
-            return runtime
+            def event(kind, data):
+                try:
+                    signals = getattr(components, "_signals", None)
+                    if signals is not None and kind.startswith("task."):
+                        signals.status_change.emit("AGENT")
+                except Exception:
+                    pass
+
+            self.runtime = type("AgentRuntime", (), {})()
+            self.runtime.agent = AgentLoop(
+                _AgentLLMAdapter(self.conversation),
+                config=agent_config,
+                tools=tools,
+                tasks=TaskManager(state_dir),
+                event=event,
+            )
+            self.runtime.submit = lambda goal, background=True: self._submit(goal, background)
+            return self.runtime
 
     @staticmethod
     def _register_legacy_tools(registry, legacy_tools):
-        registry.register(
-            "desktop.open_application",
-            "Ouvrir une application ou une URL connue par JARVIS",
-            "desktop.control",
-            lambda application: legacy_tools.open_application(application),
-        )
-        registry.register(
-            "desktop.close_application",
-            "Fermer une application/processus",
-            "desktop.control",
-            lambda application: legacy_tools.close_application(application),
-        )
-        registry.register(
-            "desktop.web_search",
-            "Ouvrir une recherche web dans le navigateur JARVIS",
-            "web.open",
-            lambda query: _emit_open_url("https://www.google.com/search?q=" + _quote(query)),
-        )
-        registry.register(
-            "desktop.image_search",
-            "Ouvrir une recherche d'images dans le navigateur JARVIS",
-            "web.open",
-            lambda query: _image_search(query),
-        )
-        registry.register(
-            "desktop.screenshot",
-            "Prendre une capture d'écran",
-            "screen.capture",
-            lambda: _screenshot(),
-        )
-        registry.register(
-            "desktop.copy_text",
-            "Copier du texte dans le presse-papiers",
-            "desktop.clipboard",
-            lambda text: _copy(text),
-        )
-        registry.register(
-            "system.stats",
-            "Lire les métriques système actuelles",
-            "system.read",
-            lambda: _system_stats(),
-        )
+        registry.register("desktop.open_application", "Ouvrir une application ou une URL", "desktop.control", lambda application: legacy_tools.open_application(application))
+        registry.register("desktop.close_application", "Fermer une application/processus", "desktop.control", lambda application: legacy_tools.close_application(application))
+        registry.register("desktop.web_search", "Ouvrir une recherche web", "web.open", lambda query: _emit_open_url("https://www.google.com/search?q=" + _quote(query)))
+        registry.register("desktop.image_search", "Rechercher des images", "web.open", lambda query: _image_search(query))
+        registry.register("desktop.screenshot", "Prendre une capture d'écran", "screen.capture", lambda: _screenshot())
+        registry.register("desktop.copy_text", "Copier du texte", "desktop.clipboard", lambda text: _copy(text))
+        registry.register("system.stats", "Lire les métriques système", "system.read", lambda: _system_stats())
 
-    def submit(self, goal: str, *, background: bool = True):
-        return self._ensure().submit(goal, background=background)
+    def _submit(self, goal: str, background: bool):
+        task = self.runtime.agent.tasks.create(goal, {"source": "command_processor"})
+        if background:
+            thread = threading.Thread(target=self.runtime.agent.run, args=(task.id,), daemon=True, name=f"jarvis-agent-{task.id}")
+            thread.start()
+        else:
+            self.runtime.agent.run(task.id)
+        return task
 
     def process(self, text: str) -> str:
-        task = self.submit(text, background=False)
+        task = self._submit(text, background=False)
         if task.state.value == "completed":
             return str(task.context.get("result") or "Tâche terminée.")
         if task.state.value == "waiting_approval":
-            return str(task.history[-1].get("message", "J'attends une information ou une approbation."))
+            return "J'attends une approbation ou une information nécessaire."
         if task.state.value == "failed":
-            return "Le moteur autonome a échoué, retour au moteur classique."
+            raise RuntimeError("agent_failed")
         return "Tâche autonome lancée."
 
 
@@ -295,7 +257,6 @@ def _image_search(query: str):
 def _screenshot():
     import time
     import pyautogui
-    from pathlib import Path
     base = Path.home() / ".jarvis_neo" / "snapshots"
     base.mkdir(parents=True, exist_ok=True)
     path = base / f"agent_{int(time.time())}.png"
@@ -317,6 +278,42 @@ def _system_stats():
         "disk_percent": psutil.disk_usage(Path.home().anchor or "/").percent,
     }
 
+
+def _install_autonomous_processor_hook():
+    """Install the new brain before assistant.py instantiates CommandProcessor."""
+    try:
+        import core.assistant_components as components
+        Processor = components.CommandProcessor
+        if getattr(Processor, "_neo_autonomous_hook", False):
+            return
+        original = Processor.process
+        bridge_holder: dict[int, AutonomousCommandBridge] = {}
+
+        def process(self, text):
+            config = getattr(components, "_config", None) or {}
+            # Explicit opt-out keeps the legacy engine available for debugging.
+            if config.get("agent_enabled", True) is False:
+                return original(self, text)
+            try:
+                key = id(self)
+                bridge = bridge_holder.get(key)
+                if bridge is None:
+                    bridge = AutonomousCommandBridge(config)
+                    bridge_holder[key] = bridge
+                return bridge.process(text)
+            except Exception:
+                # The new core must not brick the HUD. Legacy processing is the
+                # compatibility safety net while the migration is in progress.
+                return original(self, text)
+
+        Processor.process = process
+        Processor._neo_autonomous_hook = True
+        Processor._neo_legacy_process = original
+    except Exception:
+        pass
+
+
+_install_autonomous_processor_hook()
 
 __all__ = [
     "ConversationAI",
