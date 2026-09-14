@@ -381,9 +381,25 @@ class CommandProcessor:
 
     def open_app(self, name): return tools.open_application(name)[1]
     def kill_app(self, name1, name2=None): return tools.close_application(name1 if name1 else name2)[1]
+    def image_search(self, query):
+        query = str(query).strip()
+        if not query:
+            return "Sujet de recherche d'images manquant."
+        try:
+            from .web_media import WebMediaProvider
+            WebMediaProvider().search_images(query, limit=8)
+        except Exception as exc:
+            _log.warning("Recherche images échouée: %s", exc)
+            url = "https://www.google.com/search?q=" + quote_plus(query) + "&tbm=isch&hl=fr&safe=active"
+            _signals.open_url.emit(url)
+        return f"Recherche d'images lancée pour « {query} »."
+
     def web_search(self, query):
-        url = f"https://www.google.com/search?q={str(query).strip().replace(' ', '+')}"; _signals.open_url.emit(url)
+        query = str(query).strip()
+        url = "https://www.google.com/search?q=" + quote_plus(query)
+        _signals.open_url.emit(url)
         return f"Recherche web exécutée pour : {query}"
+
     def take_note(self, content): _memory.add_note("Note", content); return "Note enregistrée dans la mémoire centrale."
     def get_weather(self):
         try:
