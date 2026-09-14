@@ -26,16 +26,16 @@ def _cockpit_dispatch(assistant: Any, callback) -> None:
 
 
 def _get_cockpit(assistant: Any):
+    if assistant is None:
+        return None
     cockpit = getattr(assistant, "_neo_cockpit", None)
     if cockpit is not None:
         return cockpit
     try:
-        from ui.cockpit_bridge import install
-        install(assistant)
-        opener = getattr(assistant, "_neo_open_cockpit", None)
-        if callable(opener):
-            opener()
-        return getattr(assistant, "_neo_cockpit", None)
+        from ui.cockpit_hud import CockpitHud
+        cockpit = CockpitHud(assistant, getattr(assistant, "JarvisWindow", None))
+        assistant._neo_cockpit = cockpit
+        return cockpit
     except Exception:
         return None
 
@@ -92,8 +92,9 @@ def install() -> None:
     def on_event(event: str, payload: dict[str, Any]) -> None:
         task = payload.get("task", {})
         state = task.get("state")
+        assistant = getattr(components, "_neo_assistant", None)
         if state:
-            _show_agent_event(components._neo_assistant if hasattr(components, "_neo_assistant") else None, state, task)
+            _show_agent_event(assistant, state, task)
         try:
             if state == "failed":
                 components._signals.log_msg.emit("Jarvis", "Mission autonome échouée. Consultez l'historique de tâche.")
@@ -123,8 +124,9 @@ def install() -> None:
         if not goal:
             return "Directive vide."
         try:
+            components._neo_assistant = getattr(self, "_neo_assistant", None)
             task = _RUNTIME.submit(goal, context={"source": "hud", "language": "fr-FR"}, background=True)
-            _show_agent_event(getattr(self, "_neo_assistant", None), "running", task.to_dict())
+            _show_agent_event(components._neo_assistant, "running", task.to_dict())
             return f"Mission autonome lancée. ID : {task.id}"
         except Exception:
             return original(self, text)
