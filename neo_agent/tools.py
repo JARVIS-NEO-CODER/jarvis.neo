@@ -76,6 +76,13 @@ class ToolRegistry:
         self.register("system.run_command", "Exécuter une commande sans shell", "system.run_command", self._run_command)
         self.register("system.processes", "Lister les processus actifs", "system.read", self._processes)
         self.register("browser.open", "Ouvrir une URL dans le navigateur", "network.open", self._browser_open)
+        self.register("browser.back", "Revenir à la page précédente du navigateur actif", "desktop.control", self._browser_back)
+        self.register("browser.forward", "Avancer dans l'historique du navigateur actif", "desktop.control", self._browser_forward)
+        self.register("browser.reload", "Recharger la page du navigateur actif", "desktop.control", self._browser_reload)
+        self.register("browser.scroll", "Faire défiler la page du navigateur actif", "desktop.control", self._browser_scroll)
+        self.register("browser.click", "Cliquer à une position de l'écran", "desktop.control", self._browser_click)
+        self.register("browser.type", "Saisir du texte dans le navigateur actif", "desktop.control", self._browser_type)
+        self.register("browser.key", "Envoyer une touche ou un raccourci clavier", "desktop.control", self._browser_key)
         self.register("web.search", "Rechercher sur le Web et retourner des résultats", "network.read", self._web_search)
         self.register("web.fetch", "Lire le contenu textuel d'une page Web", "network.read", self._web_fetch)
         self.register("web.image_search", "Rechercher des images et retourner leurs URLs", "network.read", self._image_search)
@@ -137,6 +144,59 @@ class ToolRegistry:
         return {"url": target, "opened": str(bool(opened))}
 
     @staticmethod
+    def _pyautogui():
+        import pyautogui
+        pyautogui.PAUSE = 0.08
+        return pyautogui
+
+    def _browser_back(self) -> dict[str, str]:
+        self._pyautogui().hotkey("alt", "left")
+        return {"action": "back"}
+
+    def _browser_forward(self) -> dict[str, str]:
+        self._pyautogui().hotkey("alt", "right")
+        return {"action": "forward"}
+
+    def _browser_reload(self) -> dict[str, str]:
+        self._pyautogui().hotkey("ctrl", "r")
+        return {"action": "reload"}
+
+    def _browser_scroll(self, amount: int = -5) -> dict[str, int]:
+        value = max(-30, min(30, int(amount)))
+        self._pyautogui().scroll(value)
+        return {"amount": value}
+
+    def _browser_click(self, x: int, y: int, button: str = "left") -> dict[str, int | str]:
+        if button not in {"left", "right", "middle"}:
+            raise ValueError("button must be left, right or middle")
+        self._pyautogui().click(int(x), int(y), button=button)
+        return {"x": int(x), "y": int(y), "button": button}
+
+    def _browser_type(self, text: str, interval: float = 0.01) -> dict[str, int]:
+        value = str(text)
+        self._pyautogui().write(value, interval=max(0, min(float(interval), 0.2)))
+        return {"characters": len(value)}
+
+    def _browser_key(self, key: str) -> dict[str, str]:
+        value = str(key).strip().lower()
+        if not value:
+            raise ValueError("key is empty")
+        aliases = {
+            "entrée": "enter", "retour": "enter", "echap": "esc", "échap": "esc",
+            "espace": "space", "suppr": "delete", "arrière": "backspace",
+            "haut": "up", "bas": "down", "gauche": "left", "droite": "right",
+        }
+        value = aliases.get(value, value)
+        if "+" in value:
+            parts = [part for part in value.split("+") if part]
+            if len(parts) < 2:
+                raise ValueError("Invalid shortcut")
+            self._pyautogui().hotkey(*parts)
+        else:
+            self._pyautogui().press(value)
+        return {"key": value}
+
+    @staticmethod
     def _request(url: str, timeout: int = 15) -> str:
         req = urllib.request.Request(url, headers={"User-Agent": "JARVIS-NEO/4.0",
                                                      "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.7"})
@@ -150,8 +210,8 @@ class ToolRegistry:
             raise ValueError("Search query is empty")
         raw = self._request("https://www.google.com/search?q=" + urllib.parse.quote_plus(query) + "&hl=fr")
         results = []
-        for href, title, snippet in re.findall(r'<a href="/url\?q=(https?[^&"]+)[^"]*"[^>]*>.*?<h3[^>]*>(.*?)</h3>(.*?)</a>', raw, re.I | re.S):
-            clean = lambda value: re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html.unescape(value))).strip()
+        for href, title, snippet in re.findall(r'<a href="/url\\?q=(https?[^&"]+)[^"]*"[^>]*>.*?<h3[^>]*>(.*?)</h3>(.*?)</a>', raw, re.I | re.S):
+            clean = lambda value: re.sub(r"\\s+", " ", re.sub(r"<[^>]+>", " ", html.unescape(value))).strip()
             results.append({"title": clean(title), "url": urllib.parse.unquote(href), "snippet": clean(snippet)[:500]})
             if len(results) >= max(1, min(int(max_results), 12)):
                 break
@@ -161,9 +221,9 @@ class ToolRegistry:
         if urllib.parse.urlparse(str(url)).scheme not in {"http", "https"}:
             raise ValueError("URL must use http or https")
         raw = self._request(url)
-        text = re.sub(r"<(script|style|noscript)[^>]*>.*?</\1>", " ", raw, flags=re.I | re.S)
+        text = re.sub(r"<(script|style|noscript)[^>]*>.*?</\\1>", " ", raw, flags=re.I | re.S)
         text = re.sub(r"<[^>]+>", " ", text)
-        return re.sub(r"\s+", " ", html.unescape(text)).strip()[:max(1, min(int(max_chars), 100_000))]
+        return re.sub(r"\\s+", " ", html.unescape(text)).strip()[:max(1, min(int(max_chars), 100_000))]
 
     def _image_search(self, query: str, limit: int = 8) -> list[dict[str, str]]:
         from core.web_media import WebMediaProvider
