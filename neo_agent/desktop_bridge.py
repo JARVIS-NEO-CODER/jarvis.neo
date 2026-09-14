@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +23,8 @@ def install() -> None:
     if getattr(original, "_neo_agent_bridge", False):
         _INSTALLED = True
         return
+
+    original_image_search = getattr(components.CommandProcessor, "image_search", None)
 
     def on_event(event: str, payload: dict[str, Any]) -> None:
         task = payload.get("task", {})
@@ -59,8 +62,22 @@ def install() -> None:
         except Exception:
             return original(self, text)
 
+    def image_search(self, query: str):
+        """Return a media payload so Dynamic Space performs the real search.
+
+        The legacy implementation launched Google and discarded its results.
+        Dynamic Space already knows how to render the structured payload, so
+        the command now becomes a real result-producing operation.
+        """
+        query = str(query).strip()
+        if not query:
+            return "Sujet de recherche d'images manquant."
+        return json.dumps({"kind": "image_search", "query": query}, ensure_ascii=False)
+
     ask_ai._neo_agent_bridge = True
     components.CommandProcessor.ask_ai = ask_ai
+    if original_image_search is not None:
+        components.CommandProcessor.image_search = image_search
     _INSTALLED = True
 
 
