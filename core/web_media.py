@@ -3,14 +3,12 @@ from __future__ import annotations
 import html
 import json
 import re
+import threading
 import webbrowser
 from dataclasses import dataclass
 from urllib.parse import parse_qs, quote, unquote_plus, urlencode, urlparse, urlunparse
 from urllib.request import Request, urlopen
 
-# Ce module est importé très tôt par le launcher source.
-# Le hook applique le thème après l'initialisation de l'interface afin que
-# les styles globaux de l'ancien HUD ne puissent pas l'écraser.
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QApplication
 from core.neo_theme import apply_theme
@@ -34,9 +32,9 @@ if not _THEME_HOOK_INSTALLED:
     QApplication._jarvis_neo_theme_hook = True
 
 
-# Les recherches d'images ont leur propre intention. On conserve aussi un
-# hook de compatibilité pour les anciens appels qui ouvraient une URL Google
-# classique avec "image/photo" dans la requête.
+# Compatibilité navigateur : les anciens appels Google contenant explicitement
+# "image/photo" sont convertis en Google Images. Les recherches Web normales
+# restent inchangées.
 _ORIGINAL_WEBBROWSER_OPEN = webbrowser.open
 _ORIGINAL_WEBBROWSER_OPEN_NEW_TAB = getattr(webbrowser, "open_new_tab", None)
 _ORIGINAL_WEBBROWSER_OPEN_NEW = getattr(webbrowser, "open_new", None)
@@ -88,7 +86,6 @@ if not getattr(webbrowser, "_jarvis_neo_media_patch", False):
 
 
 def _open_google_images(query: str) -> bool:
-    """Ouvre explicitement Google Images pour une recherche média."""
     query = str(query).strip()
     if not query:
         return False
@@ -99,7 +96,9 @@ def _open_google_images(query: str) -> bool:
         "safe": "active",
     })
     try:
-        return bool(_ORIGINAL_WEBBROWSER_OPEN_NEW_TAB(url)) if _ORIGINAL_WEBBROWSER_OPEN_NEW_TAB else bool(_ORIGINAL_WEBBROWSER_OPEN(url, new=2, autoraise=True))
+        if _ORIGINAL_WEBBROWSER_OPEN_NEW_TAB is not None:
+            return bool(_ORIGINAL_WEBBROWSER_OPEN_NEW_TAB(url))
+        return bool(_ORIGINAL_WEBBROWSER_OPEN(url, new=2, autoraise=True))
     except Exception:
         try:
             return bool(_ORIGINAL_WEBBROWSER_OPEN(url, new=2, autoraise=True))
@@ -158,8 +157,7 @@ class WebMediaProvider:
     @staticmethod
     def _decode_m(value: str) -> dict:
         try:
-            decoded = html.unescape(value)
-            return json.loads(decoded)
+            return json.loads(html.unescape(value))
         except Exception:
             return {}
 
@@ -175,14 +173,12 @@ class WebMediaProvider:
             url = str(data.get('murl') or '').strip()
             if not url.startswith(('http://', 'https://')):
                 continue
-            results.append(
-                MediaResult(
-                    str(data.get('t') or data.get('title') or '').strip() or query,
-                    url,
-                    str(data.get('turl') or '').strip(),
-                    str(data.get('purl') or '').strip(),
-                )
-            )
+            results.append(MediaResult(
+                str(data.get('t') or data.get('title') or '').strip() or query,
+                url,
+                str(data.get('turl') or '').strip(),
+                str(data.get('purl') or '').strip(),
+            ))
 
         if not results:
             for match in re.finditer(r'\bmurl\s*[:=]\s*["\'](https?://[^"\']+)', text, re.I):
@@ -195,11 +191,10 @@ class WebMediaProvider:
         query = str(query).strip()
         if not query:
             raise ValueError("La recherche d'images ne peut pas être vide.")
-
-        # Point important : l'intention image connaît le contexte média ici.
-        # On n'attend donc pas de deviner ce contexte depuis l'URL Google.
+        # L'intention image connaît déjà le contexte média. On force donc
+        # Google Images avec la requête réelle, même si elle vaut simplement
+        # "cam" et ne contient pas le mot "image".
         _open_google_images(query)
-
         text = self._fetch(
             'https://www.bing.com/images/search?q=' + quote(query) + '&form=HDRSC2&setlang=fr-FR'
         )
@@ -224,14 +219,12 @@ class WebMediaProvider:
             url = str(data.get('murl') or data.get('purl') or '').strip()
             source = str(data.get('purl') or url).strip()
             if source.startswith(('http://', 'https://')):
-                results.append(
-                    MediaResult(
-                        str(data.get('t') or data.get('title') or '').strip() or query,
-                        url or source,
-                        str(data.get('turl') or '').strip(),
-                        source,
-                    )
-                )
+                results.append(MediaResult(
+                    str(data.get('t') or data.get('title') or '').strip() or query,
+                    url or source,
+                    str(data.get('turl') or '').strip(),
+                    source,
+                ))
 
         if not results:
             for match in re.finditer(r'<a[^>]+href=["\'](https?://[^"\']+)["\'][^>]*>(.*?)</a>', text, re.I | re.S):
@@ -242,5 +235,76 @@ class WebMediaProvider:
                     results.append(MediaResult(title[:180], url, '', url))
         return self._limit(results, max(1, min(int(limit), 8)))
 
+
+def _extract_media_payloads(message: str):
+    """Extrait les objets JSON de média renvoyés par le cerveau JARVIS."""
+    text = str(message or '').strip()
+    candidates = re.findall(r'\{[^{}]*\}', text, re.S)
+    for raw in candidates:
+        try:
+            data = json.loads(raw)
+        except Exception:
+            continue
+        kind = str(data.get('kind') or '').lower().strip()
+        query = str(data.get('query') or '').strip()
+        if kind in {'image_search', 'video_search'} and query:
+            yield kind, query
+
+
+def _install_dynamic_media_bridge():
+    """Reconnecte les payloads image_search au Dynamic Space après la division du runtime."""
+    try:
+        from core.assistant_components import JarvisWindow
+    except Exception:
+        return
+
+    original = getattr(JarvisWindow, 'add_chat_msg', None)
+    if original is None or getattr(JarvisWindow, '_jarvis_media_bridge_installed', False):
+        return
+
+    # Une version antérieure possédait déjà ce pont dans assistant.py.
+    # Ne pas l'exécuter deux fois.
+    if '_handle_media_search_intent' in getattr(original, '__code__', None).co_names:
+        JarvisWindow._jarvis_media_bridge_installed = True
+        return
+
+    def add_chat_msg_with_media(self, sender, msg):
+        original(self, sender, msg)
+        if sender not in ('Jarvis', 'J.A.R.V.I.S.'):
+            return
+        payloads = list(_extract_media_payloads(str(msg)))
+        if not payloads or not hasattr(self, 'dynamic_space') or self.dynamic_space is None:
+            return
+
+        def worker():
+            for kind, query in payloads[:1]:
+                try:
+                    provider = WebMediaProvider()
+                    if kind == 'image_search':
+                        results = [item.as_dict() for item in provider.search_images(query)]
+                    else:
+                        results = [item.as_dict() for item in provider.search_videos(query)]
+                except Exception as exc:
+                    logging_message = f'MEDIA SEARCH: {exc}'
+                    try:
+                        import logging
+                        logging.warning(logging_message)
+                    except Exception:
+                        pass
+                    continue
+
+                def apply_results(results=results, kind=kind, query=query):
+                    if getattr(self, 'dynamic_space', None) is not None and results:
+                        self.dynamic_space.update_media_search(kind, results, query)
+
+                QTimer.singleShot(0, apply_results)
+
+        threading.Thread(target=worker, daemon=True, name='jarvis-media-search').start()
+
+    JarvisWindow.add_chat_msg = add_chat_msg_with_media
+    JarvisWindow._jarvis_media_bridge_installed = True
+
+
+_install_dynamic_media_bridge()
 
 __all__ = ['MediaResult', 'WebMediaProvider']
