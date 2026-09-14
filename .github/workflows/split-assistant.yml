@@ -7,10 +7,6 @@ on:
       - 'assistant.py'
       - 'tools/split_assistant.py'
       - '.github/workflows/split-assistant.yml'
-  issues:
-    types: [opened]
-  schedule:
-    - cron: '*/5 * * * *'
   workflow_dispatch:
 
 permissions:
@@ -24,18 +20,14 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 2
-
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
       - name: Modularize assistant.py
         run: python tools/split_assistant.py
-
       - name: Validate syntax
         run: python -m py_compile assistant.py core/legacy_memory.py core/assistant_components.py
-
       - name: Commit extraction
         run: |
           if git diff --quiet; then
