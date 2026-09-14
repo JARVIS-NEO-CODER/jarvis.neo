@@ -893,6 +893,7 @@ plugin_manager = PluginManager(PLUGINS_DIR)
 tools = ToolManager()
 speech = SpeechEngine()
 processor = CommandProcessor()
+configure_components(**globals())
 
 # --- INTENT ENGINE & AI ---
 
