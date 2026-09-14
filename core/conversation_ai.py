@@ -70,7 +70,7 @@ class ConversationAI:
         ollama = None
         if self.config.get("ollama_enabled", True):
             ollama = OllamaChatProvider(self.ollama_module, self.config.get("model", "llama3.2:3b"), self.config.get("ollama_base_url", "http://127.0.0.1:11434"))
-        return AIProviderRouter(groq=groq, ollama=ollama, prefer_groq=self.config.get("ai_provider", "groq") != "ollama", fallback_to_ollama=bool(self.config.get("groq_fallback_to_ollama", True)), quota_fallback_mode=self.config.get("groq_quota_fallback", "ollama"))
+        return AIProviderRouter(groq=groq, ollama=ollama, prefer_groq=self.config.get("ai_provider", "groq") != "ollama", fallback_to_ollama=self.config.get("groq_fallback_to_ollama", True), quota_fallback_mode=self.config.get("groq_quota_fallback", "ollama"))
 
     def refresh(self) -> dict[str, Any]:
         self.router = self._build_router()
@@ -111,6 +111,10 @@ Règles:
 - Une erreur d'outil est une observation, pas une réussite.
 - Ne termine que lorsque le but est atteint ou objectivement impossible.
 - Si une information indispensable manque, utilise wait.
+- Pour une demande d'image, utilise web.image_search et exploite les résultats retournés. Ne te contente jamais d'ouvrir Google Images.
+- Pour une recherche web, utilise web.search puis web.fetch lorsque le contenu de la page est nécessaire. browser.open sert uniquement quand l'utilisateur demande réellement d'ouvrir une page dans son navigateur.
+- Ne transforme pas automatiquement une demande d'image en ouverture d'un onglet Google.
+- Une action de navigation doit produire une observation exploitable avant de décider de la suite.
 """
 
     def __init__(self, conversation: "ConversationAI"):
@@ -176,7 +180,7 @@ class AutonomousCommandBridge:
         registry.register("desktop.open_application", "Ouvrir une application ou une URL", "desktop.control", lambda application: legacy_tools.open_application(application))
         registry.register("desktop.close_application", "Fermer une application/processus", "desktop.control", lambda application: legacy_tools.close_application(application))
         registry.register("desktop.web_search", "Ouvrir une recherche web", "web.open", lambda query: _emit_open_url("https://www.google.com/search?q=" + _quote(query)))
-        registry.register("desktop.image_search", "Rechercher des images", "web.open", lambda query: _image_search(query))
+        registry.register("desktop.image_search", "Rechercher des images et retourner les résultats", "network.read", lambda query: _image_search(query))
         registry.register("desktop.screenshot", "Prendre une capture d'écran", "screen.capture", lambda: _screenshot())
         registry.register("desktop.copy_text", "Copier du texte", "desktop.clipboard", lambda text: _copy(text))
         registry.register("system.stats", "Lire les métriques système", "system.read", lambda: _system_stats())
@@ -221,7 +225,7 @@ def _emit_open_url(url: str):
 
 def _image_search(query: str):
     from .web_media import WebMediaProvider
-    return {"query": str(query).strip(), "results": [item.as_dict() for item in WebMediaProvider().search_images(query, limit=8)]}
+    return {"query": str(query).strip(), "results": [item.as_dict() for item in WebMediaProvider().search_images(query, limit=8, open_browser=False)]}
 
 
 def _screenshot():
