@@ -210,8 +210,8 @@ class ToolRegistry:
             raise ValueError("Search query is empty")
         raw = self._request("https://www.google.com/search?q=" + urllib.parse.quote_plus(query) + "&hl=fr")
         results = []
-        for href, title, snippet in re.findall(r'<a href="/url\\?q=(https?[^&"]+)[^"]*"[^>]*>.*?<h3[^>]*>(.*?)</h3>(.*?)</a>', raw, re.I | re.S):
-            clean = lambda value: re.sub(r"\\s+", " ", re.sub(r"<[^>]+>", " ", html.unescape(value))).strip()
+        for href, title, snippet in re.findall(r'<a href="/url\?q=(https?[^&"]+)[^"]*"[^>]*>.*?<h3[^>]*>(.*?)</h3>(.*?)</a>', raw, re.I | re.S):
+            clean = lambda value: re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html.unescape(value))).strip()
             results.append({"title": clean(title), "url": urllib.parse.unquote(href), "snippet": clean(snippet)[:500]})
             if len(results) >= max(1, min(int(max_results), 12)):
                 break
@@ -221,9 +221,9 @@ class ToolRegistry:
         if urllib.parse.urlparse(str(url)).scheme not in {"http", "https"}:
             raise ValueError("URL must use http or https")
         raw = self._request(url)
-        text = re.sub(r"<(script|style|noscript)[^>]*>.*?</\\1>", " ", raw, flags=re.I | re.S)
+        text = re.sub(r"<(script|style|noscript)[^>]*>.*?</\1>", " ", raw, flags=re.I | re.S)
         text = re.sub(r"<[^>]+>", " ", text)
-        return re.sub(r"\\s+", " ", html.unescape(text)).strip()[:max(1, min(int(max_chars), 100_000))]
+        return re.sub(r"\s+", " ", html.unescape(text)).strip()[:max(1, min(int(max_chars), 100_000))]
 
     def _image_search(self, query: str, limit: int = 8) -> list[dict[str, str]]:
         from core.web_media import WebMediaProvider
@@ -234,4 +234,6 @@ class ToolRegistry:
         target = self._safe_path(path)
         target.parent.mkdir(parents=True, exist_ok=True)
         pyautogui.screenshot(str(target))
-        return {"path": str(target)}
+        width, height = pyautogui.size()
+        position = pyautogui.position()
+        return {"path": str(target), "width": int(width), "height": int(height), "mouse_x": int(position.x), "mouse_y": int(position.y)}
