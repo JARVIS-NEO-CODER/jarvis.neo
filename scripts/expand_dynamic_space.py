@@ -35,7 +35,7 @@ replacement = '''    def update_from_response(self, message):
         self.content.verticalScrollBar().setValue(0)
 '''
 
-new_text, count = pattern.subn(replacement, text, count=1)
+new_text, count = pattern.subn(lambda _match: replacement, text, count=1)
 if count != 1:
     raise SystemExit('Dynamic Space method not found')
 
