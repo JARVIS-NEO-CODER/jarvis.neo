@@ -5,9 +5,16 @@ path = Path('assistant.py')
 text = path.read_text(encoding='utf-8')
 
 # Make Dynamic Space a real contextual display, not a short preview.
-text = text.replace('self.setMaximumHeight(220)', 'self.setMinimumHeight(180)\n        self.setMaximumHeight(420)', 1)
+text = text.replace(
+    'self.setMaximumHeight(220)',
+    'self.setMinimumHeight(180)\n        self.setMaximumHeight(420)',
+    1,
+)
 
-pattern = re.compile(r'    def update_from_response\(self, message\):\n.*?(?=\nclass JarvisWindow\()', re.S)
+pattern = re.compile(
+    r'    def update_from_response\(self, message\):\n.*?(?=\nclass JarvisWindow\()',
+    re.S,
+)
 replacement = '''    def update_from_response(self, message):
         """Display as much useful response content as possible automatically."""
         text = str(message or "").strip()
@@ -35,9 +42,10 @@ replacement = '''    def update_from_response(self, message):
         self.content.verticalScrollBar().setValue(0)
 '''
 
-new_text, count = pattern.subn(lambda _match: replacement, text, count=1)
-if count != 1:
+match = pattern.search(text)
+if not match:
     raise SystemExit('Dynamic Space method not found')
 
+new_text = text[:match.start()] + replacement + text[match.end():]
 path.write_text(new_text, encoding='utf-8')
 print('Dynamic Space expanded')
