@@ -7,6 +7,8 @@ on:
       - 'assistant.py'
       - 'tools/split_assistant.py'
       - '.github/workflows/split-assistant.yml'
+  issues:
+    types: [opened]
   schedule:
     - cron: '*/5 * * * *'
   workflow_dispatch:
