@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict
 from typing import Any, Callable, Protocol
 
 from .models import AgentConfig, AgentDecision, TaskState, ToolResult
@@ -17,14 +16,7 @@ class LLMAdapter(Protocol):
 class AgentLoop:
     """Goal -> decision -> tool -> observation -> decision loop."""
 
-    def __init__(
-        self,
-        llm: LLMAdapter,
-        config: AgentConfig | None = None,
-        tools: ToolRegistry | None = None,
-        tasks: TaskManager | None = None,
-        event: Callable[[str, dict[str, Any]], None] | None = None,
-    ):
+    def __init__(self, llm: LLMAdapter, config: AgentConfig | None = None, tools: ToolRegistry | None = None, tasks: TaskManager | None = None, event: Callable[[str, dict[str, Any]], None] | None = None):
         self.config = config or AgentConfig()
         self.policy = PermissionPolicy(self.config.permission_mode)
         self.tools = tools or ToolRegistry(self.policy, self.config.cwd)
@@ -47,15 +39,13 @@ class AgentLoop:
 
     def resume(self, task_id: str) -> Task | None:
         task = self.tasks.get(task_id)
-        if task is None:
-            return None
-        if task.state in {TaskState.COMPLETED, TaskState.CANCELLED}:
+        if task is None or task.state in {TaskState.COMPLETED, TaskState.CANCELLED}:
             return task
+        self._stop_requested.discard(task_id)
         self.run(task_id)
         return task
 
     def approve(self, task_id: str) -> Task | None:
-        """Execute exactly the action that was shown to the user for approval."""
         task = self.tasks.get(task_id)
         if task is None:
             return None
@@ -63,7 +53,6 @@ class AgentLoop:
         if not pending:
             self.tasks.save_event(task, "approval_ignored", reason="no pending tool")
             return task
-
         self.tasks.save_event(task, "approval_granted", tool=pending["tool"])
         result = self.tools.execute(pending["tool"], pending["arguments"], approved=True)
         self._record_result(task, result)
@@ -74,11 +63,8 @@ class AgentLoop:
 
     def run(self, task_id: str) -> Task | None:
         task = self.tasks.get(task_id)
-        if task is None:
-            return None
-        if task.state in {TaskState.COMPLETED, TaskState.CANCELLED}:
+        if task is None or task.state in {TaskState.COMPLETED, TaskState.CANCELLED}:
             return task
-
         self.tasks.update(task, TaskState.RUNNING)
         self._emit("task.started", task)
 
@@ -90,8 +76,7 @@ class AgentLoop:
 
             context = self._build_context(task)
             try:
-                raw = self.llm.decide(context)
-                decision = self._normalize_decision(raw)
+                decision = self._normalize_decision(self.llm.decide(context))
             except Exception as exc:
                 task.retries += 1
                 self.tasks.save_event(task, "decision_error", error=str(exc))
@@ -109,6 +94,7 @@ class AgentLoop:
                 break
 
             if decision.kind == "wait":
+                task.context["waiting_message"] = decision.message
                 self.tasks.update(task, TaskState.WAITING_APPROVAL)
                 self.tasks.save_event(task, "waiting", message=decision.message)
                 break
@@ -123,15 +109,10 @@ class AgentLoop:
 
             result = self.tools.execute(decision.tool, decision.arguments, approved=False)
             self._record_result(task, result)
-
             if result.requires_approval:
-                task.context["pending_tool"] = {
-                    "tool": decision.tool,
-                    "arguments": decision.arguments,
-                }
+                task.context["pending_tool"] = {"tool": decision.tool, "arguments": decision.arguments}
                 self.tasks.update(task, TaskState.WAITING_APPROVAL)
                 break
-
             self._apply_result(task, result)
             self.tasks.update(task, TaskState.RUNNING)
         else:
@@ -144,10 +125,11 @@ class AgentLoop:
     def _apply_result(self, task: Task, result: ToolResult) -> None:
         task.step += 1
         task.retries = 0
-        if not result.ok:
-            task.context["last_error"] = result.error
-        else:
+        if result.ok:
             task.context["last_result"] = result.data
+            task.context.pop("last_error", None)
+        else:
+            task.context["last_error"] = result.error or result.message
 
     def _record_result(self, task: Task, result: ToolResult) -> None:
         self.tasks.save_event(task, "tool_result", result=result.to_dict())
@@ -165,7 +147,8 @@ class AgentLoop:
                 "Never claim a tool succeeded when its result is an error.",
                 "Use tools instead of inventing files, programs, web results or system state.",
                 "If the goal is ambiguous, ask for clarification instead of guessing.",
-                "After meaningful actions, inspect the result and correct failures.",
+                "After meaningful actions, inspect or test the result and correct failures.",
+                "Do not repeat an identical failed action without a changed approach.",
                 "Finish only when the requested goal is actually achieved or impossible.",
             ],
         }
@@ -182,13 +165,7 @@ class AgentLoop:
         arguments = raw.get("arguments", {})
         if not isinstance(arguments, dict):
             raise ValueError("Tool arguments must be an object")
-        return AgentDecision(
-            kind=kind,
-            tool=raw.get("tool"),
-            arguments=arguments,
-            message=str(raw.get("message", "")),
-            task_status=raw.get("task_status"),
-        )
+        return AgentDecision(kind=kind, tool=raw.get("tool"), arguments=arguments, message=str(raw.get("message", "")), task_status=raw.get("task_status"))
 
     def _emit(self, event: str, task: Task) -> None:
         if self.event:
