@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import json
-import os
+import shlex
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -22,9 +21,9 @@ class ToolSpec:
 class ToolRegistry:
     """Registry and executor for JARVIS capabilities.
 
-    Tools are deliberately ordinary Python callables. The LLM only gets tool
-    names, descriptions and JSON arguments. The registry performs validation,
-    permission checks and error normalization before anything reaches Python.
+    Tools are ordinary Python callables. The LLM only gets tool names,
+    descriptions and JSON arguments. The registry validates permissions and
+    normalizes errors before anything reaches Python.
     """
 
     def __init__(self, policy: PermissionPolicy | None = None, cwd: str = "."):
@@ -81,7 +80,7 @@ class ToolRegistry:
         self.register("filesystem.write", "Créer ou remplacer un fichier texte", "filesystem.write", self._write)
         self.register("filesystem.search", "Rechercher des fichiers par nom", "filesystem.read", self._search)
         self.register("filesystem.delete", "Supprimer un fichier", "filesystem.delete", self._delete)
-        self.register("system.run_command", "Exécuter une commande système", "system.run_command", self._run_command)
+        self.register("system.run_command", "Exécuter une commande sans shell", "system.run_command", self._run_command)
 
     def _list(self, path: str = ".") -> list[str]:
         p = self._safe_path(path)
@@ -115,11 +114,14 @@ class ToolRegistry:
         p.unlink()
         return {"deleted": str(p)}
 
-    def _run_command(self, command: str, timeout: int = 60) -> dict[str, Any]:
+    def _run_command(self, command: str | list[str], timeout: int = 60) -> dict[str, Any]:
+        argv = shlex.split(command, posix=False) if isinstance(command, str) else [str(x) for x in command]
+        if not argv:
+            raise ValueError("Empty command")
         completed = subprocess.run(
-            command,
+            argv,
             cwd=str(self.cwd),
-            shell=True,
+            shell=False,
             capture_output=True,
             text=True,
             timeout=max(1, min(timeout, 300)),
