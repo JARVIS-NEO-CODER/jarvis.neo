@@ -1,6 +1,10 @@
-"""Conversation AI facade for J.A.R.V.I.S. NEO."""
+"""Conversation AI facade and autonomous-agent bridge for J.A.R.V.I.S. NEO."""
 from __future__ import annotations
+
+import json
+import threading
 from typing import Any
+
 from .ai_provider_router import AIProviderRouter
 from .groq_provider import GroqProvider
 
@@ -22,26 +26,40 @@ CONVERSATION_STYLE = """STYLE CONVERSATIONNEL NEO :
 - En vocal, écris des phrases faciles à prononcer, sans listes lourdes ni symboles inutiles.
 """
 
+
 class OllamaChatProvider:
     def __init__(self, ollama_module: Any, model: str, base_url: str | None = None):
         self.ollama = ollama_module
         self.model = model
         self.base_url = base_url
+
     @property
-    def available(self) -> bool: return self.ollama is not None
+    def available(self) -> bool:
+        return self.ollama is not None
+
     def chat(self, messages, *, temperature=0.2, max_tokens=2048):
-        if self.ollama is None: raise RuntimeError("Ollama n'est pas installé.")
+        if self.ollama is None:
+            raise RuntimeError("Ollama n'est pas installé.")
         client = self.ollama.Client(**({"host": self.base_url} if self.base_url else {}))
-        response = client.chat(model=self.model, messages=messages, options={"temperature": temperature, "num_predict": max_tokens})
-        try: return response["message"]["content"]
-        except (KeyError, TypeError) as exc: raise RuntimeError("Réponse Ollama invalide.") from exc
+        response = client.chat(
+            model=self.model,
+            messages=messages,
+            options={"temperature": temperature, "num_predict": max_tokens},
+        )
+        try:
+            return response["message"]["content"]
+        except (KeyError, TypeError) as exc:
+            raise RuntimeError("Réponse Ollama invalide.") from exc
+
 
 class ConversationAI:
     def __init__(self, config: dict[str, Any], ollama_module: Any = None):
         self.config = config
         if ollama_module is None:
-            try: import ollama as ollama_module
-            except ImportError: ollama_module = None
+            try:
+                import ollama as ollama_module
+            except ImportError:
+                ollama_module = None
         self.ollama_module = ollama_module
         self.config.setdefault("groq_model", DEFAULT_GROQ_MODEL)
         self.config.setdefault("ollama_enabled", True)
@@ -51,11 +69,25 @@ class ConversationAI:
         self.router = self._build_router()
 
     def _build_router(self):
-        groq = GroqProvider(api_key=self.config.get("groq_api_key", ""), model=self.config.get("groq_model", DEFAULT_GROQ_MODEL), timeout=float(self.config.get("groq_timeout", 60)))
+        groq = GroqProvider(
+            api_key=self.config.get("groq_api_key", ""),
+            model=self.config.get("groq_model", DEFAULT_GROQ_MODEL),
+            timeout=float(self.config.get("groq_timeout", 60)),
+        )
         ollama = None
         if self.config.get("ollama_enabled", True):
-            ollama = OllamaChatProvider(self.ollama_module, self.config.get("model", "llama3.2:3b"), self.config.get("ollama_base_url", "http://127.0.0.1:11434"))
-        return AIProviderRouter(groq=groq, ollama=ollama, prefer_groq=self.config.get("ai_provider", "groq") != "ollama", fallback_to_ollama=bool(self.config.get("groq_fallback_to_ollama", True)), quota_fallback_mode=self.config.get("groq_quota_fallback", "ollama"))
+            ollama = OllamaChatProvider(
+                self.ollama_module,
+                self.config.get("model", "llama3.2:3b"),
+                self.config.get("ollama_base_url", "http://127.0.0.1:11434"),
+            )
+        return AIProviderRouter(
+            groq=groq,
+            ollama=ollama,
+            prefer_groq=self.config.get("ai_provider", "groq") != "ollama",
+            fallback_to_ollama=bool(self.config.get("groq_fallback_to_ollama", True)),
+            quota_fallback_mode=self.config.get("groq_quota_fallback", "ollama"),
+        )
 
     def refresh(self) -> dict[str, Any]:
         self.router = self._build_router()
@@ -74,9 +106,221 @@ class ConversationAI:
         return [style, *items]
 
     def chat(self, messages, *, temperature=0.2, max_tokens=2048):
-        return self.router.chat(self._with_style(messages), temperature=temperature, max_tokens=max_tokens)
+        return self.router.chat(
+            self._with_style(messages),
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
 
     @property
-    def status(self): return self.router.status
+    def status(self):
+        return self.router.status
 
-__all__ = ["ConversationAI", "OllamaChatProvider", "CONVERSATION_STYLE"]
+
+class _AgentLLMAdapter:
+    """Turn the existing provider router into the JSON decision interface."""
+
+    SYSTEM = """Tu es le cerveau autonome de J.A.R.V.I.S. NEO.
+Tu ne réponds PAS en conversation libre. Tu dois choisir l'action suivante.
+Réponds avec un unique objet JSON valide, sans markdown.
+Formats autorisés:
+{"kind":"tool","tool":"namespace.name","arguments":{}}
+{"kind":"finish","message":"résultat court"}
+{"kind":"wait","message":"information ou approbation nécessaire"}
+
+Règles:
+- Utilise les outils pour connaître l'état réel du PC, des fichiers et du web.
+- N'invente jamais un résultat.
+- Pour une tâche de développement, inspecte d'abord le projet, écris, exécute/teste, lis les erreurs puis corrige et reteste.
+- Une erreur d'outil est une observation, pas une réussite.
+- Ne termine que lorsque le but est atteint ou objectivement impossible.
+- Si une information indispensable manque, utilise wait.
+"""
+
+    def __init__(self, conversation: "ConversationAI"):
+        self.conversation = conversation
+
+    def decide(self, context: dict[str, Any]) -> dict[str, Any] | str:
+        payload = json.dumps(context, ensure_ascii=False, default=str)
+        raw = self.conversation.router.chat(
+            [
+                {"role": "system", "content": self.SYSTEM},
+                {"role": "user", "content": payload},
+            ],
+            temperature=0.1,
+            max_tokens=1400,
+        )
+        return raw
+
+
+class AutonomousCommandBridge:
+    """Connect the new AgentLoop to the historical CommandProcessor.
+
+    The bridge is lazy so importing conversation_ai never starts an agent or
+    touches hardware. Existing regex commands remain as a compatibility
+    fallback when the autonomous path cannot run.
+    """
+
+    def __init__(self, config: dict[str, Any], conversation: ConversationAI):
+        self.config = config
+        self.conversation = conversation
+        self.runtime = None
+        self._lock = threading.Lock()
+
+    def _ensure(self):
+        if self.runtime is not None:
+            return self.runtime
+        with self._lock:
+            if self.runtime is not None:
+                return self.runtime
+            from neo_agent.models import AgentConfig
+            from neo_agent.permissions import PermissionMode
+            from neo_agent.runtime import JarvisAgentRuntime
+            from neo_agent.tools import ToolRegistry
+            import core.assistant_components as components
+
+            mode_value = int(self.config.get("agent_permission_mode", 3))
+            mode_value = max(1, min(3, mode_value))
+            agent_config = AgentConfig(
+                permission_mode=PermissionMode(mode_value),
+                cwd=str(self.config.get("agent_cwd", ".")),
+                state_dir=str(self.config.get("agent_state_dir", "~/.jarvis_neo/agent")),
+                max_steps=int(self.config.get("agent_max_steps", 24)),
+            )
+
+            def event(kind, data):
+                try:
+                    state = getattr(components, "_state", None)
+                    signals = getattr(components, "_signals", None)
+                    if signals is not None and kind.startswith("task."):
+                        signals.status_change.emit("AGENT")
+                    if state is not None:
+                        state.is_processing = kind != "task.updated"
+                except Exception:
+                    pass
+
+            runtime = JarvisAgentRuntime(
+                config=agent_config,
+                model=self.config.get("model", "llama3.2:3b"),
+                event=event,
+            )
+
+            tools = runtime.agent.tools
+            legacy_tools = getattr(components, "_legacy_tools", None) or getattr(components, "tools", None)
+            if legacy_tools is not None:
+                self._register_legacy_tools(tools, legacy_tools)
+
+            self.runtime = runtime
+            return runtime
+
+    @staticmethod
+    def _register_legacy_tools(registry, legacy_tools):
+        registry.register(
+            "desktop.open_application",
+            "Ouvrir une application ou une URL connue par JARVIS",
+            "desktop.control",
+            lambda application: legacy_tools.open_application(application),
+        )
+        registry.register(
+            "desktop.close_application",
+            "Fermer une application/processus",
+            "desktop.control",
+            lambda application: legacy_tools.close_application(application),
+        )
+        registry.register(
+            "desktop.web_search",
+            "Ouvrir une recherche web dans le navigateur JARVIS",
+            "web.open",
+            lambda query: _emit_open_url("https://www.google.com/search?q=" + _quote(query)),
+        )
+        registry.register(
+            "desktop.image_search",
+            "Ouvrir une recherche d'images dans le navigateur JARVIS",
+            "web.open",
+            lambda query: _image_search(query),
+        )
+        registry.register(
+            "desktop.screenshot",
+            "Prendre une capture d'écran",
+            "screen.capture",
+            lambda: _screenshot(),
+        )
+        registry.register(
+            "desktop.copy_text",
+            "Copier du texte dans le presse-papiers",
+            "desktop.clipboard",
+            lambda text: _copy(text),
+        )
+        registry.register(
+            "system.stats",
+            "Lire les métriques système actuelles",
+            "system.read",
+            lambda: _system_stats(),
+        )
+
+    def submit(self, goal: str, *, background: bool = True):
+        return self._ensure().submit(goal, background=background)
+
+    def process(self, text: str) -> str:
+        task = self.submit(text, background=False)
+        if task.state.value == "completed":
+            return str(task.context.get("result") or "Tâche terminée.")
+        if task.state.value == "waiting_approval":
+            return str(task.history[-1].get("message", "J'attends une information ou une approbation."))
+        if task.state.value == "failed":
+            return "Le moteur autonome a échoué, retour au moteur classique."
+        return "Tâche autonome lancée."
+
+
+def _quote(value: str) -> str:
+    from urllib.parse import quote_plus
+    return quote_plus(str(value).strip())
+
+
+def _emit_open_url(url: str):
+    import core.assistant_components as components
+    signals = getattr(components, "_signals", None)
+    if signals is None:
+        raise RuntimeError("Signal d'ouverture web indisponible")
+    signals.open_url.emit(url)
+    return {"url": url}
+
+
+def _image_search(query: str):
+    from .web_media import WebMediaProvider
+    WebMediaProvider().search_images(str(query).strip(), limit=8)
+    return {"query": str(query).strip(), "started": True}
+
+
+def _screenshot():
+    import time
+    import pyautogui
+    from pathlib import Path
+    base = Path.home() / ".jarvis_neo" / "snapshots"
+    base.mkdir(parents=True, exist_ok=True)
+    path = base / f"agent_{int(time.time())}.png"
+    pyautogui.screenshot(str(path))
+    return {"path": str(path)}
+
+
+def _copy(text: str):
+    import pyperclip
+    pyperclip.copy(str(text))
+    return {"copied": True}
+
+
+def _system_stats():
+    import psutil
+    return {
+        "cpu_percent": psutil.cpu_percent(),
+        "ram_percent": psutil.virtual_memory().percent,
+        "disk_percent": psutil.disk_usage(Path.home().anchor or "/").percent,
+    }
+
+
+__all__ = [
+    "ConversationAI",
+    "OllamaChatProvider",
+    "AutonomousCommandBridge",
+    "CONVERSATION_STYLE",
+]
