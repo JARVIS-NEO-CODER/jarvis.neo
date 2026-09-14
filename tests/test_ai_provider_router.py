@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from core.ai_provider_router import AIProviderRouter
 
 
@@ -98,3 +100,44 @@ def test_ollama_only_mode_skips_groq():
     assert router.chat([]) == "ollama"
     assert groq.calls == 0
     assert ollama.calls == 1
+
+
+def test_screenshot_context_uses_local_vision_model(tmp_path, monkeypatch):
+    screenshot = tmp_path / "agent.png"
+    screenshot.write_bytes(b"not-a-real-image")
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+            self.calls = []
+
+        def chat(self, **kwargs):
+            self.calls.append(kwargs)
+            assert kwargs["model"] == "qwen3-vl:2b"
+            assert kwargs["messages"][-1]["images"] == [str(screenshot.resolve())]
+            return {"message": {"content": '{"kind":"finish","message":"observed"}'}}
+
+    class FakeOllamaModule:
+        def __init__(self):
+            self.client = None
+
+        def Client(self, **kwargs):
+            self.client = FakeClient(**kwargs)
+            return self.client
+
+    fake_module = FakeOllamaModule()
+    ollama = FakeProvider()
+    ollama.ollama = fake_module
+    ollama.base_url = "http://127.0.0.1:11434"
+    router = AIProviderRouter(FakeProvider(result="groq"), ollama, prefer_groq=True)
+    monkeypatch.delenv("JARVIS_AGENT_VISION_MODEL", raising=False)
+
+    context = {"goal": "naviguer", "context": {"last_result": {"path": str(screenshot)}}}
+    result = router.chat([{"role": "system", "content": "system"}, {"role": "user", "content": __import__("json").dumps(context)}])
+
+    assert result == '{"kind":"finish","message":"observed"}'
+    assert router.status["active_provider"] == "ollama-vision:qwen3-vl:2b"
+
+
+if __name__ == "__main__":
+    pass
