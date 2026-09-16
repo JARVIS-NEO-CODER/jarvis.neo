@@ -6,7 +6,6 @@ methods, signals and widgets remain available while the visual shell changes.
 
 from __future__ import annotations
 
-from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QStackedWidget
 
 from .neo_hud import NeoHud
@@ -24,7 +23,7 @@ class NeoWindow:
                 # Keep the complete legacy UI alive so existing methods continue
                 # to have valid widget references. Only the visible surface changes.
                 self._legacy_central = self.centralWidget()
-                self.neo_hud = NeoHud()
+                self.neo_hud = NeoHud(self)
 
                 self._neo_stack = QStackedWidget()
                 self._neo_stack.setObjectName("neoWindowStack")
@@ -33,14 +32,17 @@ class NeoWindow:
                 self._neo_stack.setCurrentWidget(self.neo_hud)
                 self.setCentralWidget(self._neo_stack)
 
-                # Mirror the existing event bus into the new visual shell.
-                signals.log_msg.connect(self._neo_log)
-                signals.status_change.connect(self._neo_status)
-                signals.stats_update.connect(self._neo_stats)
-                signals.listening_change.connect(self._neo_listening)
-                signals.speaking_change.connect(self._neo_speaking)
+                # Import the runtime module lazily. This avoids relying on globals
+                # that do not exist inside this adapter module.
+                import assistant as runtime
+                runtime.signals.log_msg.connect(self._neo_log)
+                runtime.signals.status_change.connect(self._neo_status)
+                runtime.signals.stats_update.connect(self._neo_stats)
+                runtime.signals.listening_change.connect(self._neo_listening)
+                runtime.signals.speaking_change.connect(self._neo_speaking)
 
-                # A small initial entry makes the terminal visibly alive.
+                self._neo_runtime = runtime
+                self._neo_assistant = self
                 self.neo_hud.append_terminal("JARVIS", "NEO HUD INITIALIZED")
 
             def _neo_log(self, speaker, message):
@@ -70,13 +72,13 @@ class NeoWindow:
             def _neo_listening(self, active):
                 if active:
                     self.neo_hud.set_reactor_state("listening")
-                elif not getattr(state, "is_speaking", False):
+                elif not getattr(self._neo_runtime.state, "is_speaking", False):
                     self.neo_hud.set_reactor_state("online")
 
             def _neo_speaking(self, active):
                 if active:
                     self.neo_hud.set_reactor_state("speaking")
-                elif not getattr(state, "is_listening", False):
+                elif not getattr(self._neo_runtime.state, "is_listening", False):
                     self.neo_hud.set_reactor_state("online")
 
         return _NeoWindow

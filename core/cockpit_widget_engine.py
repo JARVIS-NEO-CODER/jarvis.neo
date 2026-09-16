@@ -24,7 +24,7 @@ class CockpitPanel:
 
 class CockpitWidgetEngine:
     """Create, update and remove bounded dynamic panels inside the cockpit."""
-    ALLOWED_KINDS = {"info", "web", "image", "status", "notification"}
+    ALLOWED_KINDS = {"info", "web", "image", "status", "notification", "success", "warning", "error"}
     MAX_PANELS = 8
     MAX_TEXT = 4000
     MAX_SOURCE = 1000

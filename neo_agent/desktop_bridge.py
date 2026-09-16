@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -33,7 +34,8 @@ def _get_cockpit(assistant: Any):
         return cockpit
     try:
         from ui.cockpit_hud import CockpitHud
-        cockpit = CockpitHud(assistant, getattr(assistant, "JarvisWindow", None))
+        parent = assistant if hasattr(assistant, "winId") else None
+        cockpit = CockpitHud(assistant, parent)
         assistant._neo_cockpit = cockpit
         return cockpit
     except Exception:
@@ -41,7 +43,7 @@ def _get_cockpit(assistant: Any):
 
 
 def _show_agent_event(assistant: Any, state: str, task: dict[str, Any]) -> None:
-    """Surface autonomous work in the NEO cockpit instead of the legacy chat."""
+    """Surface autonomous work in the NEO cockpit instead of legacy chat."""
     def render() -> None:
         cockpit = _get_cockpit(assistant)
         if cockpit is None:
@@ -57,21 +59,77 @@ def _show_agent_event(assistant: Any, state: str, task: dict[str, Any]) -> None:
                 result = str(context.get("result") or "Mission terminée.")
                 try:
                     payload = json.loads(result)
-                    if isinstance(payload, dict) and payload.get("kind"):
-                        result = f"Résultat {payload.get('kind')} : {payload.get('query') or payload.get('message') or 'opération terminée'}"
+                    if isinstance(payload, dict):
+                        kind = str(payload.get("kind") or "").lower()
+                        if kind == "image_search":
+                            result = f"Recherche d'images terminée : {payload.get('query') or goal}"
+                        elif payload.get("kind"):
+                            result = f"Résultat {payload.get('kind')} : {payload.get('query') or payload.get('message') or 'opération terminée'}"
                 except Exception:
                     pass
                 cockpit.show_dynamic_panel("agent-result", "MISSION TERMINÉE", result, "success", "neo-agent")
             elif state == "failed":
-                cockpit.show_dynamic_panel("agent-result", "MISSION ÉCHOUÉE", "La mission autonome a échoué. Consultez l'historique de tâche.", "error", "neo-agent")
+                error = str(context.get("last_error") or "La mission autonome a échoué.")
+                cockpit.show_dynamic_panel("agent-result", "MISSION ÉCHOUÉE", error, "error", "neo-agent")
             elif state == "waiting_approval":
-                cockpit.show_dynamic_panel("agent-result", "AUTORISATION REQUISE", "Une action nécessite une autorisation avant de poursuivre.", "warning", "neo-agent")
+                message = str(context.get("waiting_message") or "Une action nécessite une autorisation avant de poursuivre.")
+                cockpit.show_dynamic_panel("agent-approval", "AUTORISATION REQUISE", message, "warning", "neo-agent")
             else:
                 cockpit.show_dynamic_panel("agent-progress", "MISSION AUTONOME", goal, "info", "neo-agent")
         except Exception:
             pass
 
     _cockpit_dispatch(assistant, render)
+
+
+def _show_image_results(assistant: Any, query: str) -> None:
+    """Fetch image results off the GUI thread and display them in the cockpit."""
+    def worker() -> None:
+        try:
+            from core.web_media import WebMediaProvider
+            results = WebMediaProvider().search_images(query, limit=8)
+        except Exception as exc:
+            _cockpit_dispatch(assistant, lambda: _show_agent_event(assistant, "failed", {"goal": query, "context": {"last_error": str(exc)}}))
+            return
+
+        def render() -> None:
+            cockpit = _get_cockpit(assistant)
+            if cockpit is None:
+                return
+            cockpit.show()
+            cockpit.raise_()
+            cockpit.activateWindow()
+            if not results:
+                cockpit.show_dynamic_panel("image-search", "RECHERCHE D'IMAGES", f"Aucun résultat pour « {query} ».", "warning", "neo-agent")
+                return
+            for index, item in enumerate(results[:8]):
+                cockpit.show_dynamic_panel(
+                    f"image-search-{index}",
+                    item.title or query,
+                    "",
+                    "image",
+                    item.url,
+                )
+
+        _cockpit_dispatch(assistant, render)
+
+    threading.Thread(target=worker, daemon=True, name="jarvis-image-search").start()
+
+
+def _bind_active_window(components) -> None:
+    """Keep the real Qt window available to background agent callbacks."""
+    window_cls = getattr(components, "JarvisWindow", None)
+    if window_cls is None or getattr(window_cls, "_neo_agent_window_bound", False):
+        return
+    original_init = window_cls.__init__
+
+    def init_with_agent_reference(self, *args, **kwargs):
+        original_init(self, *args, **kwargs)
+        self._neo_assistant = self
+        components._neo_assistant = self
+
+    window_cls.__init__ = init_with_agent_reference
+    window_cls._neo_agent_window_bound = True
 
 
 def install() -> None:
@@ -83,6 +141,9 @@ def install() -> None:
         original = components.CommandProcessor.ask_ai
     except Exception:
         return
+
+    _bind_active_window(components)
+
     if getattr(original, "_neo_agent_bridge", False):
         _INSTALLED = True
         return
@@ -95,18 +156,19 @@ def install() -> None:
         assistant = getattr(components, "_neo_assistant", None)
         if state:
             _show_agent_event(assistant, state, task)
-        try:
-            if state == "failed":
-                components._signals.log_msg.emit("Jarvis", "Mission autonome échouée. Consultez l'historique de tâche.")
-            elif state == "waiting_approval":
-                components._signals.log_msg.emit("Jarvis", "Autorisation requise pour poursuivre la mission.")
-        except Exception:
-            pass
 
     cfg = components._cfg()
+    try:
+        permission_mode = max(1, min(3, int(cfg.get("agent_permission_mode", 3))))
+    except (TypeError, ValueError):
+        permission_mode = 3
+    try:
+        max_steps = max(1, min(500, int(cfg.get("agent_max_steps", 80))))
+    except (TypeError, ValueError):
+        max_steps = 80
     config = AgentConfig(
-        permission_mode=max(1, min(3, int(cfg.get("agent_permission_mode", 3)))),
-        max_steps=80,
+        permission_mode=permission_mode,
+        max_steps=max_steps,
         max_retries_per_step=3,
         cwd=".",
         persist_tasks=True,
@@ -124,19 +186,23 @@ def install() -> None:
         if not goal:
             return "Directive vide."
         try:
-            components._neo_assistant = getattr(self, "_neo_assistant", None)
+            assistant = getattr(self, "_neo_assistant", None) or getattr(components, "_neo_assistant", None)
+            components._neo_assistant = assistant
             task = _RUNTIME.submit(goal, context={"source": "hud", "language": "fr-FR"}, background=True)
-            _show_agent_event(components._neo_assistant, "running", task.to_dict())
+            _show_agent_event(assistant, "running", task.to_dict())
             return f"Mission autonome lancée. ID : {task.id}"
         except Exception:
             return original(self, text)
 
     def image_search(self, query: str):
-        """Return a media payload without opening the legacy Dynamic Space."""
         query = str(query).strip()
         if not query:
             return "Sujet de recherche d'images manquant."
-        return json.dumps({"kind": "image_search", "query": query}, ensure_ascii=False)
+        assistant = getattr(self, "_neo_assistant", None) or getattr(components, "_neo_assistant", None)
+        if assistant is not None:
+            _show_image_results(assistant, query)
+            return f"Recherche d'images lancée pour « {query} »."
+        return original_image_search(self, query) if original_image_search else "Recherche d'images indisponible."
 
     ask_ai._neo_agent_bridge = True
     components.CommandProcessor.ask_ai = ask_ai
