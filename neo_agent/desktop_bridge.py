@@ -174,7 +174,13 @@ def install() -> None:
         persist_tasks=True,
         state_dir=str(Path.home() / ".jarvis_neo" / "agent_tasks"),
     )
-    model = str(cfg.get("model") or "llama3.2:3b")
+    tier_models = {
+        "grand": "llama3.1:8b",
+        "moyen": "llama3.2:3b",
+        "petit": "phi3:mini",
+        "mini": "gemma2:2b",
+    }
+    model = str(cfg.get("agent_model") or tier_models.get(str(cfg.get("model_tier", "moyen")), cfg.get("model") or "llama3.2:3b"))
     _RUNTIME = JarvisAgentRuntime(config=config, model=model, event=on_event)
     try:
         _RUNTIME.recover()
