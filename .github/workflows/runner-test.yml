@@ -1,0 +1,11 @@
+name: runner-test
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-slim
+    steps:
+      - run: echo test
