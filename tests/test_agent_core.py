@@ -57,3 +57,28 @@ def test_agent_finishes_after_tool(tmp_path):
     task = agent.start("create hello")
     assert task.state == TaskState.COMPLETED
     assert Path(tmp_path / "hello.txt").read_text(encoding="utf-8") == "hello"
+
+
+
+def test_agent_cannot_claim_completion_after_a_failed_tool(tmp_path):
+    manager = TaskManager(str(tmp_path / "tasks"))
+    config = AgentConfig(
+        permission_mode=PermissionMode.UNRESTRICTED,
+        cwd=str(tmp_path),
+        state_dir=str(tmp_path / "tasks"),
+        max_retries_per_step=2,
+    )
+    tools = ToolRegistry(PermissionPolicy(config.permission_mode), str(tmp_path))
+    llm = FakeLLM([
+        {"kind": "tool", "tool": "filesystem.read", "arguments": {"path": "missing.txt"}},
+        {"kind": "finish", "message": "Everything succeeded."},
+        {"kind": "finish", "message": "Everything succeeded."},
+        {"kind": "finish", "message": "Everything succeeded."},
+    ])
+    agent = AgentLoop(llm, config=config, tools=tools, tasks=manager)
+    task = agent.start("Read missing.txt and report the result")
+
+    assert task.state == TaskState.FAILED
+    assert task.context.get("last_error")
+    assert any(item["event"] == "finish_rejected_unverified" for item in task.history)
+    assert not any(item["event"] == "completed" for item in task.history)
