@@ -45,7 +45,10 @@ class AgentEngine:
         try:
             budget=self.estimate_budget(objective); self._emit("agent.budget_warning",{"objective":objective,**budget})
             if budget_confirm is not None and not budget_confirm(budget): return self._failure(objective,None,(),None,"Exécution Agent annulée à cause du budget IA.",0,None)
-            plan=self._make_plan(objective)
+            try:
+                plan=self._make_plan(objective)
+            except Exception as exc:
+                return self._failure(objective,None,(),None,f"Impossible de créer un plan: {exc}",0,None)
             if plan is None: return self._failure(objective,None,(),None,"Impossible de créer un plan.",0,None)
             if len(plan.steps)>self.max_steps: return self._failure(objective,plan,(),None,f"Plan trop long: {len(plan.steps)} étapes, maximum {self.max_steps}.",0,None)
             if confirm is not None and not confirm(plan): return self._failure(objective,plan,(),None,"Plan refusé par l'utilisateur.",0,None)
@@ -70,8 +73,8 @@ class AgentEngine:
                         try:
                             current_plan=self.planner.replan(objective,failure=last_verification.reason,observation={**transition,"verification":last_verification.evidence},attempted_actions=tuple(attempted_actions)); self.ia_calls+=1
                         except Exception as exc:
-                            if retries>=self.max_retries: return self._failure(objective,current_plan,tuple(all_results),step_index,str(exc),retries,last_verification)
-                            continue
+                            # Never repeat the same failed plan just because replanning itself failed.
+                            return self._failure(objective,current_plan,tuple(all_results),step_index,f"Replanification impossible: {exc}",retries,last_verification)
                         if not current_plan.steps: return self._failure(objective,current_plan,tuple(all_results),step_index,"La replanification n'a produit aucune étape sûre.",retries,last_verification)
                         if len(current_plan.steps)>self.max_steps: return self._failure(objective,current_plan,tuple(all_results),step_index,"La replanification dépasse le budget d'étapes.",retries,last_verification)
                         self._emit("agent.replanned",{"objective":objective,"attempt":retries,"steps":[s.action for s in current_plan.steps]}); replanned=True; break
