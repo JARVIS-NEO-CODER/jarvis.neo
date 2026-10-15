@@ -48,8 +48,45 @@ def test_agent_executes_every_step_before_marking_multistep_goal_complete():
             ))
 
     agent = AgentEngine(engine, planner=TwoStepPlanner(), observer=ControlledObserver(), max_retries=0)
-    result = agent.run("Prépare puis vérifie la mission")
+    result = agent.run("Lance Test App")
 
     assert result.success is True
     assert calls == ["prepare", "verify"]
     assert len(result.results) == 2
+
+
+def test_agent_reports_planning_errors_instead_of_crashing():
+    class BrokenPlanner:
+        def plan(self, objective):
+            raise RuntimeError("planner unavailable")
+
+    agent = AgentEngine(ActionEngine(), planner=BrokenPlanner(), max_retries=0)
+    result = agent.run("Lance Test App")
+
+    assert result.success is False
+    assert "planner unavailable" in (result.error or "")
+    assert agent.running is False
+
+
+def test_agent_does_not_repeat_failed_plan_when_replanning_fails():
+    engine = ActionEngine()
+    calls = []
+    engine.register(ActionDefinition(
+        "test.always_fails",
+        lambda **k: calls.append("attempt") or (_ for _ in ()).throw(RuntimeError("controlled failure")),
+        description="Controlled failure",
+    ))
+
+    class BrokenRecoveryPlanner:
+        def plan(self, objective):
+            return GoalPlan(objective, (GoalStep("test.always_fails"),))
+
+        def replan(self, objective, **kwargs):
+            raise RuntimeError("replanning unavailable")
+
+    agent = AgentEngine(engine, planner=BrokenRecoveryPlanner(), max_retries=2)
+    result = agent.run("Effectue une action")
+
+    assert result.success is False
+    assert "replanning unavailable" in (result.error or "")
+    assert calls == ["attempt"]
