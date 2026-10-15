@@ -59,7 +59,9 @@ class AgentEngine:
                     last_verification=self.verifier.verify(objective,before=before,after=after,action_success=result.success,action_verified=result.verified)
                     self._emit("agent.objective_verified",{"objective":objective,"step":step_index,"achieved":last_verification.achieved,"confidence":last_verification.confidence,"reason":last_verification.reason,"evidence":last_verification.evidence})
                     self._emit("agent.step_finished",{"objective":objective,"step":step_index,"total":len(current_plan.steps),"action":step.action,"success":result.success,"verified":result.verified,"message":result.message,"system_after":self._snapshot_dict(after),"system_change":transition,"objective_achieved":last_verification.achieved,"verification_confidence":last_verification.confidence})
-                    if last_verification.achieved:
+                    # A successful intermediate action is not proof that a multi-step goal is complete.
+                    # Finish only after the final step of the current plan has been verified.
+                    if last_verification.achieved and step_index == len(current_plan.steps):
                         self._emit("agent.completed",{"objective":objective,"steps":len(all_results),"recovery_attempts":retries,"ia_calls":self.ia_calls,"verification":last_verification.evidence})
                         return AgentRunResult(objective,True,current_plan,tuple(all_results),recovery_attempts=retries,verification=last_verification,ia_calls=self.ia_calls)
                     if not result.success or not result.verified or step_index==len(current_plan.steps):
