@@ -100,7 +100,7 @@ def run_live_test(model: str, host: str) -> dict[str, Any]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run a real Black Halo agent request against local Ollama in a safe sandbox.")
-    parser.add_argument("--model", default="qwen2.5:7b", help="Installed Ollama model name")
+    parser.add_argument("--model", default="llama3.2:3b", help="Installed Ollama model name (default: llama3.2:3b)")
     parser.add_argument("--host", default="http://127.0.0.1:11434", help="Ollama HTTP endpoint")
     args = parser.parse_args()
 
