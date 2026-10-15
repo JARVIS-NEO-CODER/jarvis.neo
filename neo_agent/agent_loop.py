@@ -88,6 +88,25 @@ class AgentLoop:
             self.tasks.save_event(task, "decision", decision=decision.to_dict())
 
             if decision.kind == "finish":
+                unresolved_error = task.context.get("last_error")
+                if unresolved_error or "last_result" not in task.context:
+                    reason = (
+                        f"Fin impossible à valider après une erreur : {unresolved_error}"
+                        if unresolved_error
+                        else "Aucun résultat d'outil réussi ne permet de valider la mission."
+                    )
+                    task.context["last_error"] = reason
+                    task.retries += 1
+                    self.tasks.save_event(
+                        task, "finish_rejected_unverified", reason=reason, retries=task.retries
+                    )
+                    self._emit("task.updated", task)
+                    if task.retries > self.config.max_retries_per_step:
+                        self.tasks.update(task, TaskState.FAILED)
+                        self.tasks.save_event(task, "failed", reason=reason)
+                        break
+                    continue
+
                 task.context["result"] = decision.message
                 self.tasks.update(task, TaskState.COMPLETED)
                 self.tasks.save_event(task, "completed", result=decision.message)
@@ -115,6 +134,7 @@ class AgentLoop:
                 break
             self._apply_result(task, result)
             self.tasks.update(task, TaskState.RUNNING)
+            self._emit("task.updated", task)
         else:
             self.tasks.update(task, TaskState.FAILED)
             self.tasks.save_event(task, "step_limit", max_steps=self.config.max_steps)
