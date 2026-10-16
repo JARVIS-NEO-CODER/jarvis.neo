@@ -31,7 +31,7 @@ def test_generic_objective_is_not_verified_by_a_successful_action_alone():
 
     assert result.achieved is False
     assert result.confidence == 0.0
-    assert "specific" in result.reason.lower()
+    assert "spécifique" in result.reason.lower()
     assert result.evidence["foreground_changed"] is True
 
 
