@@ -70,8 +70,11 @@ class AgentEngine:
                     if not result.success or not result.verified or step_index==len(current_plan.steps):
                         if retries>=self.max_retries: return self._failure(objective,current_plan,tuple(all_results),step_index,last_verification.reason,retries,last_verification)
                         retries+=1; self._emit("agent.recovery_started",{"objective":objective,"step":step_index,"attempt":retries,"error":result.message,"verification":last_verification.evidence})
+                        if self.ia_calls >= self.max_ia_calls:
+                            return self._failure(objective,current_plan,tuple(all_results),step_index,"Budget IA épuisé avant la replanification.",retries,last_verification)
                         try:
-                            current_plan=self.planner.replan(objective,failure=last_verification.reason,observation={**transition,"verification":last_verification.evidence},attempted_actions=tuple(attempted_actions)); self.ia_calls+=1
+                            self.ia_calls += 1
+                            current_plan=self.planner.replan(objective,failure=last_verification.reason,observation={**transition,"verification":last_verification.evidence},attempted_actions=tuple(attempted_actions))
                         except Exception as exc:
                             # Never repeat the same failed plan just because replanning itself failed.
                             return self._failure(objective,current_plan,tuple(all_results),step_index,f"Replanification impossible: {exc}",retries,last_verification)
@@ -82,7 +85,10 @@ class AgentEngine:
             return self._failure(objective,current_plan,tuple(all_results),None,"Nombre maximal de tentatives atteint.",retries,last_verification)
         finally: self._running=False
     def _make_plan(self,objective):
-        plan=self.planner.plan(objective); self.ia_calls+=1; self._emit("agent.plan_ready",{"objective":objective,"steps":[s.action for s in plan.steps]}); return plan
+        if self.ia_calls >= self.max_ia_calls:
+            raise RuntimeError("Budget IA épuisé avant la planification.")
+        self.ia_calls += 1
+        plan=self.planner.plan(objective); self._emit("agent.plan_ready",{"objective":objective,"steps":[s.action for s in plan.steps]}); return plan
     def _observe(self,step,phase,action):
         if self.observer is None: return None
         try:
