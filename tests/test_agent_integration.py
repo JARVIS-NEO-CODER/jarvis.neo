@@ -90,3 +90,42 @@ def test_agent_does_not_repeat_failed_plan_when_replanning_fails():
     assert result.success is False
     assert "replanning unavailable" in (result.error or "")
     assert calls == ["attempt"]
+
+
+
+def test_agent_enforces_ia_call_budget_before_replanning():
+    engine = ActionEngine()
+    engine.register(ActionDefinition(
+        "test.fail",
+        lambda **kwargs: (_ for _ in ()).throw(RuntimeError("controlled failure")),
+        description="Controlled failure",
+    ))
+
+    class CountingPlanner:
+        def __init__(self):
+            self.plan_calls = 0
+            self.replan_calls = 0
+
+        def plan(self, objective):
+            self.plan_calls += 1
+            return GoalPlan(objective, (GoalStep("test.fail"),))
+
+        def replan(self, objective, **kwargs):
+            self.replan_calls += 1
+            return GoalPlan(objective, (GoalStep("test.fail"),))
+
+    planner = CountingPlanner()
+    agent = AgentEngine(
+        engine,
+        planner=planner,
+        observer=ControlledObserver(),
+        max_retries=2,
+        max_ia_calls=1,
+    )
+    result = agent.run("Effectue une action")
+
+    assert result.success is False
+    assert "Budget IA épuisé" in (result.error or "")
+    assert result.ia_calls == 1
+    assert planner.plan_calls == 1
+    assert planner.replan_calls == 0
