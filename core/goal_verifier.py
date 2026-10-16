@@ -39,9 +39,23 @@ class GoalVerifier:
             matched = target in process or target in window or (bool(tokens) and all(t in process or t in window for t in tokens))
             return GoalVerification(matched, 1.0 if matched else 0.15, "Le programme demandé est détecté." if matched else "Le programme demandé n'est pas détecté.", {"target": target, "active_process": after.active_process, "active_window": after.active_window})
 
+        # A successful tool call is not enough to prove an arbitrary user objective.
+        # Only objective-specific checks above may mark the goal as achieved.
+        evidence = {"action_success": action_success, "action_verified": action_verified}
         if before is not None and after is not None:
             changed = (before.active_window, before.active_process) != (after.active_window, after.active_process)
-            return GoalVerification(True, 0.7, "L'action a réussi et l'état observé a changé." if changed else "L'action a réussi; aucun changement observable n'est requis.", {"foreground_changed": changed, "active_process": after.active_process, "active_window": after.active_window})
-        return GoalVerification(True, 0.5, "L'action a été exécutée et vérifiée; aucune preuve système supplémentaire n'est disponible.", {})
+            evidence.update({
+                "foreground_changed": changed,
+                "before_process": before.active_process,
+                "after_process": after.active_process,
+                "before_window": before.active_window,
+                "after_window": after.active_window,
+            })
+        return GoalVerification(
+            False,
+            0.0,
+            "Aucune règle de vérification spécifique ne permet de confirmer cet objectif.",
+            evidence,
+        )
 
 __all__ = ["GoalVerifier", "GoalVerification"]
