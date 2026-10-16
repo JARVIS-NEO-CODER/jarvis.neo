@@ -15,3 +15,34 @@ def test_close_objective_succeeds_when_target_is_gone():
 def test_failed_action_never_verifies():
     result = GoalVerifier().verify("ferme le Minecraft Launcher", before=snap(), after=snap("explorer.exe", "Bureau"), action_success=False, action_verified=False)
     assert result.achieved is False
+
+
+
+def test_generic_objective_is_not_verified_by_a_successful_action_alone():
+    before = snap("explorer.exe", "Desktop")
+    after = snap("editor.exe", "Editor")
+    result = GoalVerifier().verify(
+        "Make my workspace better",
+        before=before,
+        after=after,
+        action_success=True,
+        action_verified=True,
+    )
+
+    assert result.achieved is False
+    assert result.confidence == 0.0
+    assert "specific" in result.reason.lower()
+    assert result.evidence["foreground_changed"] is True
+
+
+def test_generic_objective_without_system_observation_is_not_verified():
+    result = GoalVerifier().verify(
+        "Do something useful",
+        before=None,
+        after=None,
+        action_success=True,
+        action_verified=True,
+    )
+
+    assert result.achieved is False
+    assert result.confidence == 0.0
