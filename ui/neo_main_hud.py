@@ -299,15 +299,22 @@ class NeoMainHud(QMainWindow):
             self.activity_label.setText(f"Erreur commande: {exc}")
 
     def _open_settings(self) -> None:
-        for name in ("open_settings", "show_settings", "_open_settings"):
-            fn = getattr(self.assistant, name, None)
-            if callable(fn):
-                try:
-                    fn()
-                    return
-                except TypeError:
-                    pass
-        QMessageBox.information(self, "JARVIS NEO", "Les paramètres sont gérés par le moteur JARVIS.")
+        # Always expose the real provider/API configuration dialog from this HUD.
+        # Falling back to an informational popup left users without any way to
+        # restore a missing Groq API key.
+        try:
+            from ui.provider_settings import ProviderSettingsDialog
+            dialog = ProviderSettingsDialog(self)
+            if dialog.exec():
+                self._last_activity = "Paramètres IA enregistrés"
+                self.activity_label.setText(self._last_activity)
+                self._refresh()
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                "Paramètres IA indisponibles",
+                f"Impossible d'ouvrir la configuration du fournisseur IA : {exc}",
+            )
 
     def _get_attr(self, *names, default="--"):
         for name in names:
