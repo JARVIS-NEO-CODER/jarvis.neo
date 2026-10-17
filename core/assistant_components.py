@@ -60,7 +60,7 @@ from PyQt6.QtGui import QColor, QFont, QIcon, QImage, QLinearGradient, QPainter,
 from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QFrame, QGridLayout, QHBoxLayout, QLabel,
     QLineEdit, QMainWindow, QMenu, QProgressBar, QPushButton, QScrollArea,
-    QSystemTrayIcon, QTableWidget, QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget,
+    QSystemTrayIcon, QTableWidget, QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget, QMessageBox,
     QHeaderView
 )
 
