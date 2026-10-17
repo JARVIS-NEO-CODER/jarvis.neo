@@ -195,8 +195,8 @@ class GoalVerifier:
             running = []
             for process in psutil.process_iter(["pid", "name"]):
                 try:
-                    process_name = (process.info.get("name") or "").lower().removesuffix(".exe")
-                    if name in process_name:
+                    process_name = Path((process.info.get("name") or "").replace(chr(92), "/")).name.lower().removesuffix(".exe")
+                    if process_name == name or process_name.startswith(name + "."):
                         running.append({"pid": process.info.get("pid"), "name": process.info.get("name")})
                 except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
                     continue
