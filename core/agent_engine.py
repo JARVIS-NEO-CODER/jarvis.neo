@@ -59,7 +59,7 @@ class AgentEngine:
                     before=self._observe(step_index,"before",step.action); self._emit("agent.step_started",{"objective":objective,"step":step_index,"total":len(current_plan.steps),"action":step.action,"description":step.description,"system_before":self._snapshot_dict(before)})
                     result=self.action_engine.execute(step.action,**step.kwargs); all_results.append(result); attempted_actions.append(step.action)
                     after=self._observe(step_index,"after",step.action); transition=self._verify_transition(before,after,result)
-                    last_verification=self.verifier.verify(objective,before=before,after=after,action_success=result.success,action_verified=result.verified)
+                    last_verification=self.verifier.verify(objective,before=before,after=after,action_success=result.success,action_verified=result.verified,action_name=step.action,action_kwargs=step.kwargs,action_message=result.message)
                     self._emit("agent.objective_verified",{"objective":objective,"step":step_index,"achieved":last_verification.achieved,"confidence":last_verification.confidence,"reason":last_verification.reason,"evidence":last_verification.evidence})
                     self._emit("agent.step_finished",{"objective":objective,"step":step_index,"total":len(current_plan.steps),"action":step.action,"success":result.success,"verified":result.verified,"message":result.message,"system_after":self._snapshot_dict(after),"system_change":transition,"objective_achieved":last_verification.achieved,"verification_confidence":last_verification.confidence})
                     # A successful intermediate action is not proof that a multi-step goal is complete.
