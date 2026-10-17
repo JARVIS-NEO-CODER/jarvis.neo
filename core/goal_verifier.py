@@ -254,7 +254,7 @@ class GoalVerifier:
     def _target_mentioned(objective: str, target: str) -> bool:
         """Require the planned target to be named in the user's goal."""
         objective_tokens = set(re.findall(r"[a-z0-9]+", objective.lower()))
-        target_tokens = [token for token in re.findall(r"[a-z0-9]+", target.lower()) if len(token) > 1]
+        target_tokens = re.findall(r"[a-z0-9]+", target.lower())
         return bool(target_tokens) and all(token in objective_tokens for token in target_tokens)
 
 
