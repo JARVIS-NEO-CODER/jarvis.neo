@@ -148,14 +148,15 @@ class GoalVerifier:
         if action_name == "action.create_directory" and self._CREATE_DIR_INTENT.search(objective):
             raw_path = kwargs.get("path")
             path = Path(str(raw_path)).expanduser() if raw_path else None
-            exists = bool(path is not None and path.is_dir())
+            target_matches = bool(path is not None and self._target_mentioned(objective, path.name))
+            exists = bool(target_matches and path is not None and path.is_dir())
             return GoalVerification(
                 exists,
                 1.0 if exists else 0.0,
                 "Le dossier demandé existe et a été vérifié."
                 if exists
                 else "Le dossier demandé n'existe pas : création non confirmée.",
-                {"capability": action_name, "path": str(path) if path else None, "is_directory": exists},
+                {"capability": action_name, "path": str(path) if path else None, "target_matches_objective": target_matches, "is_directory": bool(path is not None and path.is_dir())},
             )
 
         if action_name == "action.write_text_file" and self._WRITE_FILE_INTENT.search(objective):
@@ -163,9 +164,10 @@ class GoalVerifier:
             expected = kwargs.get("content", "")
             encoding = kwargs.get("encoding", "utf-8")
             path = Path(str(raw_path)).expanduser() if raw_path else None
+            target_matches = bool(path is not None and self._target_mentioned(objective, path.name))
             matches = False
             read_error = None
-            if path is not None and path.is_file():
+            if target_matches and path is not None and path.is_file():
                 try:
                     matches = path.read_text(encoding=encoding) == expected
                 except (OSError, UnicodeError, LookupError) as exc:
@@ -180,15 +182,16 @@ class GoalVerifier:
                     "capability": action_name,
                     "path": str(path) if path else None,
                     "file_exists": bool(path is not None and path.is_file()),
+                    "target_matches_objective": target_matches,
                     "content_matches": matches,
                     "read_error": read_error,
                 },
             )
 
         if action_name == "action.close_app" and self._CLOSE_INTENT.search(objective):
-            name = str(kwargs.get("name", "")).strip().lower().removesuffix(".exe")
-            if not name:
-                return GoalVerification(False, 0.0, "Nom de processus absent : fermeture non vérifiable.", {"capability": action_name})
+            name = str(kwargs.get("name", "")).strip().lower().replace("\\", "/").rsplit("/", 1)[-1].removesuffix(".exe")
+            if not name or not self._target_mentioned(objective, name):
+                return GoalVerification(False, 0.0, "La cible de fermeture ne correspond pas explicitement à l'objectif.", {"capability": action_name, "target": name})
             running = []
             for process in psutil.process_iter(["pid", "name"]):
                 try:
@@ -209,9 +212,9 @@ class GoalVerifier:
 
         if action_name == "action.launch_app" and self._LAUNCH_INTENT.search(objective):
             command = str(kwargs.get("command", "")).strip()
-            target = Path(command).name.lower().removesuffix(".exe") if command else ""
-            if not target:
-                return GoalVerification(False, 0.0, "Commande absente : lancement non vérifiable.", {"capability": action_name})
+            target = command.replace("\\", "/").rsplit("/", 1)[-1].lower().removesuffix(".exe") if command else ""
+            if not target or not self._target_mentioned(objective, target):
+                return GoalVerification(False, 0.0, "La cible de lancement ne correspond pas explicitement à l'objectif.", {"capability": action_name, "target": target})
             running = []
             for process in psutil.process_iter(["pid", "name"]):
                 try:
@@ -245,6 +248,13 @@ class GoalVerifier:
             )
 
         return None
+
+    @staticmethod
+    def _target_mentioned(objective: str, target: str) -> bool:
+        """Require the planned target to be named in the user's goal."""
+        objective_tokens = set(re.findall(r"[a-z0-9]+", objective.lower()))
+        target_tokens = [token for token in re.findall(r"[a-z0-9]+", target.lower()) if len(token) > 1]
+        return bool(target_tokens) and all(token in objective_tokens for token in target_tokens)
 
 
 __all__ = ["GoalVerifier", "GoalVerification"]
