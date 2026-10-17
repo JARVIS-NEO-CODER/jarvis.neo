@@ -129,3 +129,41 @@ def test_agent_enforces_ia_call_budget_before_replanning():
     assert result.ia_calls == 1
     assert planner.plan_calls == 1
     assert planner.replan_calls == 0
+
+
+def test_agent_passes_capability_context_to_goal_verifier():
+    from core.goal_verifier import GoalVerification
+
+    engine = ActionEngine()
+    engine.register(ActionDefinition(
+        "test.context",
+        lambda **kwargs: "ok",
+        description="Test action context",
+    ))
+
+    class OneStepPlanner:
+        def plan(self, objective):
+            return GoalPlan(objective, (GoalStep("test.context", {"value": "expected"}),))
+
+    class RecordingVerifier:
+        def __init__(self):
+            self.received = None
+
+        def verify(self, objective, **kwargs):
+            self.received = kwargs
+            return GoalVerification(True, 1.0, "verified by test", {"ok": True})
+
+    verifier = RecordingVerifier()
+    agent = AgentEngine(
+        engine,
+        planner=OneStepPlanner(),
+        observer=ControlledObserver(),
+        verifier=verifier,
+        max_retries=0,
+    )
+    result = agent.run("Effectue une action")
+
+    assert result.success is True
+    assert verifier.received["action_name"] == "test.context"
+    assert verifier.received["action_kwargs"] == {"value": "expected"}
+    assert verifier.received["action_message"] == "ok"
