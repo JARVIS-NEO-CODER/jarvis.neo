@@ -46,3 +46,89 @@ def test_generic_objective_without_system_observation_is_not_verified():
 
     assert result.achieved is False
     assert result.confidence == 0.0
+
+
+def test_create_directory_goal_requires_directory_to_exist(tmp_path):
+    target = tmp_path / "created-folder"
+    target.mkdir()
+    result = GoalVerifier().verify(
+        "Crée le dossier created-folder",
+        before=snap("explorer.exe", "Desktop"),
+        after=snap("explorer.exe", "Desktop"),
+        action_success=True,
+        action_verified=True,
+        action_name="action.create_directory",
+        action_kwargs={"path": str(target)},
+    )
+
+    assert result.achieved is True
+    assert result.evidence["is_directory"] is True
+
+
+def test_create_directory_goal_fails_when_directory_is_missing(tmp_path):
+    target = tmp_path / "missing-folder"
+    result = GoalVerifier().verify(
+        "Crée le dossier missing-folder",
+        before=snap("explorer.exe", "Desktop"),
+        after=snap("explorer.exe", "missing-folder"),
+        action_success=True,
+        action_verified=True,
+        action_name="action.create_directory",
+        action_kwargs={"path": str(target)},
+    )
+
+    assert result.achieved is False
+    assert result.evidence["is_directory"] is False
+
+
+def test_write_file_goal_requires_exact_content(tmp_path):
+    target = tmp_path / "note.txt"
+    target.write_text("contenu attendu", encoding="utf-8")
+    result = GoalVerifier().verify(
+        "Écris le fichier note.txt",
+        before=snap(),
+        after=snap("editor.exe", "note.txt"),
+        action_success=True,
+        action_verified=True,
+        action_name="action.write_text_file",
+        action_kwargs={"path": str(target), "content": "contenu attendu", "encoding": "utf-8"},
+    )
+
+    assert result.achieved is True
+    assert result.evidence["content_matches"] is True
+
+
+def test_write_file_goal_fails_when_content_differs(tmp_path):
+    target = tmp_path / "note.txt"
+    target.write_text("mauvais contenu", encoding="utf-8")
+    result = GoalVerifier().verify(
+        "Écris le fichier note.txt",
+        before=snap(),
+        after=snap("editor.exe", "note.txt"),
+        action_success=True,
+        action_verified=True,
+        action_name="action.write_text_file",
+        action_kwargs={"path": str(target), "content": "contenu attendu", "encoding": "utf-8"},
+    )
+
+    assert result.achieved is False
+    assert result.evidence["content_matches"] is False
+
+
+def test_close_app_goal_checks_background_processes(monkeypatch):
+    class FakeProcess:
+        info = {"pid": 42, "name": "chrome.exe"}
+
+    monkeypatch.setattr("core.goal_verifier.psutil.process_iter", lambda fields: [FakeProcess()])
+    result = GoalVerifier().verify(
+        "Ferme Chrome",
+        before=snap("chrome.exe", "Chrome"),
+        after=snap("explorer.exe", "Desktop"),
+        action_success=True,
+        action_verified=True,
+        action_name="action.close_app",
+        action_kwargs={"name": "chrome"},
+    )
+
+    assert result.achieved is False
+    assert result.reason == "Le processus existe encore : fermeture non confirmée."
