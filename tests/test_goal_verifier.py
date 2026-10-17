@@ -197,3 +197,22 @@ def test_launch_goal_requires_process_evidence(monkeypatch):
 
     assert result.achieved is False
     assert result.evidence["running_processes"] == []
+
+
+def test_close_verification_ignores_similarly_named_process(monkeypatch):
+    class FakeProcess:
+        info = {"pid": 43, "name": "chromedriver.exe"}
+
+    monkeypatch.setattr("core.goal_verifier.psutil.process_iter", lambda fields: [FakeProcess()])
+    result = GoalVerifier().verify(
+        "Ferme Chrome",
+        before=snap("chrome.exe", "Chrome"),
+        after=snap("explorer.exe", "Desktop"),
+        action_success=True,
+        action_verified=True,
+        action_name="action.close_app",
+        action_kwargs={"name": "chrome"},
+    )
+
+    assert result.achieved is True
+    assert result.evidence["remaining_processes"] == []
