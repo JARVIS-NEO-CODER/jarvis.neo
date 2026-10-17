@@ -64,7 +64,7 @@ class GoalVerifier:
         )
         if capability_result is not None:
             return capability_result
-        if action_name and action_name.startswith("action."):
+        if action_name is not None:
             return GoalVerification(
                 False,
                 0.0,
