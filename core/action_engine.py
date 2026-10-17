@@ -159,8 +159,15 @@ class ActionEngine:
         return f"Application lancée: {command}"
     @staticmethod
     def _process_matches(name: str):
-        needle = name.strip().lower().removesuffix(".exe")
-        return [p for p in psutil.process_iter(["pid", "name"]) if needle in (p.info.get("name") or "").lower()]
+        needle = Path(name.strip().replace(chr(92), "/")).name.lower().removesuffix(".exe")
+        if not needle:
+            return []
+        matches = []
+        for process in psutil.process_iter(["pid", "name"]):
+            process_name = Path((process.info.get("name") or "").replace(chr(92), "/")).name.lower().removesuffix(".exe")
+            if process_name == needle or process_name.startswith(needle + "."):
+                matches.append(process)
+        return matches
     def _close_app(self, name, force=False):
         matches = self._process_matches(name)
         if not matches: return False, f"Aucun processus actif pour '{name}'."
