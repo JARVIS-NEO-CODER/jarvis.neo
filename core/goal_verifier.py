@@ -64,6 +64,13 @@ class GoalVerifier:
         )
         if capability_result is not None:
             return capability_result
+        if action_name and action_name.startswith("action."):
+            return GoalVerification(
+                False,
+                0.0,
+                "Cette capacité ne possède pas de vérificateur adapté à cet objectif.",
+                {"action_name": action_name, "action_success": action_success, "action_verified": action_verified},
+            )
 
         close = re.search(
             r"(?:ferme|fermer|quitte|quitter|arrête|arrêter|close|quit|stop)\s+"
