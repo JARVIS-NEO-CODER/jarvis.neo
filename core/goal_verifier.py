@@ -225,7 +225,8 @@ class GoalVerifier:
                     continue
             foreground_matches = False
             if after is not None:
-                foreground_matches = target in (after.active_process or "").lower().removesuffix(".exe")
+                foreground_process = (after.active_process or "").lower().removesuffix(".exe")
+                foreground_matches = foreground_process == target or foreground_process.startswith(target + ".")
             verified = bool(running) or foreground_matches
             return GoalVerification(
                 verified,
