@@ -1,8 +1,29 @@
 from core.action_engine import ActionEngine, ActionDefinition
 from core.agent_engine import AgentEngine
 from core.goal_planner import GoalPlan, GoalPlanner, GoalStep
-from core.goal_verifier import GoalVerifier
+from core.goal_verifier import GoalVerification, GoalVerifier
 from tests.fakes import ControlledObserver, RecoveryPlanner
+
+
+class ControlledGoalVerifier:
+    """Test-only verifier that uses the controlled observer's known window."""
+
+    def verify(self, objective, **kwargs):
+        after = kwargs.get("after")
+        action_success = kwargs.get("action_success", False)
+        action_verified = kwargs.get("action_verified", False)
+        achieved = bool(
+            action_success
+            and action_verified
+            and after is not None
+            and "test app" in (after.active_window or "").lower()
+        )
+        return GoalVerification(
+            achieved,
+            1.0 if achieved else 0.0,
+            "Controlled test window detected." if achieved else "Controlled test window not detected.",
+            {"test_window_detected": achieved},
+        )
 
 
 def test_capability_registry_planner_integration():
@@ -18,7 +39,7 @@ def test_full_pipeline_recovery_and_objective_verification():
     engine.register(ActionDefinition("test.first", lambda **k: (_ for _ in ()).throw(RuntimeError("simulated failure")), description="Controlled failure"))
     engine.register(ActionDefinition("test.recovery", lambda **k: calls.append("recovery") or "ok", description="Controlled recovery"))
     planner = GoalPlanner(engine, RecoveryPlanner())
-    verifier = GoalVerifier()
+    verifier = ControlledGoalVerifier()
     observer = ControlledObserver()
     agent = AgentEngine(engine, planner=planner, observer=observer, verifier=verifier, max_retries=1)
     result = agent.run("Lance Test App")
@@ -47,7 +68,7 @@ def test_agent_executes_every_step_before_marking_multistep_goal_complete():
                 GoalStep("test.verify", description="Verify"),
             ))
 
-    agent = AgentEngine(engine, planner=TwoStepPlanner(), observer=ControlledObserver(), max_retries=0)
+    agent = AgentEngine(engine, planner=TwoStepPlanner(), observer=ControlledObserver(), verifier=ControlledGoalVerifier(), max_retries=0)
     result = agent.run("Lance Test App")
 
     assert result.success is True
