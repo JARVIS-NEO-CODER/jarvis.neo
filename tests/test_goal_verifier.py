@@ -147,3 +147,53 @@ def test_unrelated_builtin_action_cannot_use_foreground_change_as_proof():
 
     assert result.achieved is False
     assert "vérificateur adapté" in result.reason
+
+
+def test_directory_verification_rejects_a_different_target(tmp_path):
+    target = tmp_path / "folder-a"
+    target.mkdir()
+    result = GoalVerifier().verify(
+        "Crée le dossier folder-b",
+        before=snap(),
+        after=snap("explorer.exe", "folder-a"),
+        action_success=True,
+        action_verified=True,
+        action_name="action.create_directory",
+        action_kwargs={"path": str(target)},
+    )
+
+    assert result.achieved is False
+    assert result.evidence["target_matches_objective"] is False
+
+
+def test_file_verification_rejects_a_different_target(tmp_path):
+    target = tmp_path / "file-a.txt"
+    target.write_text("contenu attendu", encoding="utf-8")
+    result = GoalVerifier().verify(
+        "Écris le fichier file-b.txt",
+        before=snap(),
+        after=snap("editor.exe", "file-a.txt"),
+        action_success=True,
+        action_verified=True,
+        action_name="action.write_text_file",
+        action_kwargs={"path": str(target), "content": "contenu attendu", "encoding": "utf-8"},
+    )
+
+    assert result.achieved is False
+    assert result.evidence["target_matches_objective"] is False
+
+
+def test_launch_goal_requires_process_evidence(monkeypatch):
+    monkeypatch.setattr("core.goal_verifier.psutil.process_iter", lambda fields: [])
+    result = GoalVerifier().verify(
+        "Lance Chrome",
+        before=snap("explorer.exe", "Desktop"),
+        after=snap("explorer.exe", "Desktop"),
+        action_success=True,
+        action_verified=True,
+        action_name="action.launch_app",
+        action_kwargs={"command": "chrome.exe"},
+    )
+
+    assert result.achieved is False
+    assert result.evidence["running_processes"] == []
