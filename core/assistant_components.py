@@ -538,19 +538,141 @@ class PrivacyActivityPanel(QFrame):
 
 class JarvisWindow(QMainWindow):
     def __init__(self):
-        super().__init__(); self.setWindowTitle(globals().get("APP_NAME","J.A.R.V.I.S. NEO")); self.resize(1150,750)
-        central=HolographicFrame(); self.setCentralWidget(central); root=QHBoxLayout(central)
-        left=QVBoxLayout(); root.addLayout(left,1); right=QVBoxLayout(); root.addLayout(right,2)
-        self.status_label=QLabel("STATUT: NOMINAL"); left.addWidget(self.status_label); left.addWidget(PrivacyActivityPanel()); left.addWidget(ArcReactor())
-        self.btn_camera=GlowButton("CAM OFF"); self.btn_camera.clicked.connect(self.toggle_camera); left.addWidget(self.btn_camera)
-        self.btn_retro=GlowButton("VISION OFF"); left.addWidget(self.btn_retro); self.btn_web=GlowButton("WEB LOCAL OFF"); left.addWidget(self.btn_web)
-        self.btn_mic=GlowButton("🎤 MICRO ON"); self.btn_mic.clicked.connect(self.toggle_mic); left.addWidget(self.btn_mic)
-        left.addStretch(); exit_btn=GlowButton("DÉCONNECTER",QColor(255,50,50)); exit_btn.clicked.connect(QCoreApplication.quit); left.addWidget(exit_btn)
-        self.chat_display=QTextEdit(); self.chat_display.setReadOnly(True); right.addWidget(self.chat_display)
+        super().__init__()
+        self.setWindowTitle(globals().get("APP_NAME", "Black Halo"))
+        self.resize(1120, 740)
+        self.setMinimumSize(820, 560)
+
+        central = HolographicFrame()
+        central.setStyleSheet(
+            "QFrame { background:#0b0d12; border:1px solid #252a33; border-radius:16px; }"
+        )
+        self.setCentralWidget(central)
+        root = QHBoxLayout(central)
+        root.setContentsMargins(22, 20, 22, 20)
+        root.setSpacing(22)
+
+        left = QVBoxLayout()
+        left.setSpacing(14)
+        root.addLayout(left, 1)
+        right = QVBoxLayout()
+        right.setSpacing(12)
+        root.addLayout(right, 2)
+
+        brand = QLabel("BLACK HALO")
+        brand.setStyleSheet("color:#f2f3f5; font-size:19px; font-weight:700; letter-spacing:2px;")
+        tagline = QLabel("ASSISTANT PERSONNEL")
+        tagline.setStyleSheet("color:#7d8491; font-size:9px; letter-spacing:2px;")
+        left.addWidget(brand)
+        left.addWidget(tagline)
+
+        self.status_label = QLabel("●  SYSTÈME PRÊT")
+        self.status_label.setStyleSheet("color:#d7a36a; font-size:11px; font-weight:600; padding:8px 0;")
+        left.addWidget(self.status_label)
+
+        self.privacy_panel = PrivacyActivityPanel()
+        self.privacy_panel.setStyleSheet(
+            "QFrame { background:#11141b; border:1px solid #252a33; border-radius:9px; } "
+            "QLabel { color:#8d96a5; font-size:10px; padding:5px; }"
+        )
+        left.addWidget(self.privacy_panel)
+
+        reactor = ArcReactor()
+        reactor.setFixedSize(190, 110)
+        reactor.setStyleSheet(
+            "QFrame { background:#101219; border:1px solid #30303a; border-radius:14px; } "
+            "QLabel { color:#d7a36a; font-size:12px; font-weight:600; letter-spacing:1px; }"
+        )
+        left.addWidget(reactor, 0, Qt.AlignmentFlag.AlignHCenter)
+
+        self.audio_bar = AudioLevelBar()
+        self.audio_bar.setStyleSheet(
+            "QProgressBar { background:#1a1e26; border:0; border-radius:3px; max-height:5px; } "
+            "QProgressBar::chunk { background:#d7a36a; border-radius:3px; }"
+        )
+        left.addWidget(self.audio_bar)
+
+        self.btn_mic = QPushButton("Microphone activé")
+        self.btn_mic.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_mic.clicked.connect(self.toggle_mic)
+        left.addWidget(self.btn_mic)
+
+        self.btn_camera = GlowButton("CAM OFF")
+        self.btn_camera.clicked.connect(self.toggle_camera)
+        self.btn_retro = GlowButton("VISION OFF")
+        self.btn_web = GlowButton("WEB LOCAL OFF")
+
+        modules_button = QPushButton("Modules et options  ▾")
+        modules_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        modules_menu = QMenu(modules_button)
+        modules_menu.addAction("Activer / désactiver la caméra", self.toggle_camera)
+        modules_menu.addSeparator()
+        modules_menu.addAction("Paramètres IA", self._open_ai_settings)
+        modules_menu.addAction("Quitter Black Halo", QCoreApplication.quit)
+        modules_button.setMenu(modules_menu)
+        left.addWidget(modules_button)
+        left.addStretch(1)
+
+        self.chat_display = QTextEdit()
+        self.chat_display.setReadOnly(True)
+        self.chat_display.setPlaceholderText("Les échanges avec Black Halo apparaîtront ici.")
+        self.chat_display.setStyleSheet(
+            "QTextEdit { background:#101219; color:#d9dde5; border:1px solid #252a33; "
+            "border-radius:12px; padding:14px; selection-background-color:#5b4937; }"
+        )
+        right.addWidget(self.chat_display, 1)
+
         self.dynamic_space = globals().get("DynamicSpaceWidget", None)
-        if self.dynamic_space: self.dynamic_space=self.dynamic_space(); right.addWidget(self.dynamic_space)
-        row=QHBoxLayout(); self.cmd_input=QLineEdit(); self.cmd_input.setPlaceholderText("Entrez une directive..."); self.cmd_input.returnPressed.connect(self.handle_input); row.addWidget(self.cmd_input); send=GlowButton("⚡"); send.clicked.connect(self.handle_input); row.addWidget(send); right.addLayout(row)
-        signals.log_msg.connect(self.add_chat_msg); signals.status_change.connect(self.update_status); signals.audio_level.connect(self._on_audio_level); self.audio_bar=AudioLevelBar(); left.addWidget(self.audio_bar)
+        if self.dynamic_space:
+            self.dynamic_space = self.dynamic_space()
+            right.addWidget(self.dynamic_space)
+
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        self.cmd_input = QLineEdit()
+        self.cmd_input.setPlaceholderText("Écrire à Black Halo…")
+        self.cmd_input.returnPressed.connect(self.handle_input)
+        self.cmd_input.setMinimumHeight(44)
+        row.addWidget(self.cmd_input, 1)
+        send = QPushButton("Envoyer  ↗")
+        send.setCursor(Qt.CursorShape.PointingHandCursor)
+        send.setMinimumHeight(44)
+        send.clicked.connect(self.handle_input)
+        row.addWidget(send)
+        right.addLayout(row)
+
+        self.setStyleSheet("""
+            QMainWindow { background:#08090d; }
+            QLabel { font-family:'Segoe UI'; }
+            QPushButton {
+                background:#171a21; color:#d9dde5; border:1px solid #303541;
+                border-radius:8px; padding:10px 12px; font-size:11px;
+                text-align:center;
+            }
+            QPushButton:hover { background:#20242d; border-color:#8c6b49; }
+            QLineEdit {
+                background:#101219; color:#f0f2f5; border:1px solid #303541;
+                border-radius:9px; padding:10px 12px; font-size:12px;
+            }
+            QLineEdit:focus { border-color:#b88756; }
+            QMenu { background:#151820; color:#e4e7ed; border:1px solid #303541; padding:5px; }
+            QMenu::item { padding:8px 24px; border-radius:5px; }
+            QMenu::item:selected { background:#292d36; }
+            QScrollBar:vertical { background:#101219; width:8px; margin:2px; }
+            QScrollBar::handle:vertical { background:#363b46; border-radius:4px; min-height:24px; }
+        """)
+
+        signals.log_msg.connect(self.add_chat_msg)
+        signals.status_change.connect(self.update_status)
+        signals.audio_level.connect(self._on_audio_level)
+
+    def _open_ai_settings(self):
+        try:
+            from ui.provider_settings import ProviderSettingsDialog
+            ProviderSettingsDialog(self).exec()
+        except Exception as exc:
+            logging.exception("Impossible d'ouvrir les paramètres IA")
+            QMessageBox.critical(self, "Paramètres IA", f"Impossible d'ouvrir les paramètres : {exc}")
     def handle_input(self):
         text=self.cmd_input.text().strip()
         if text: signals.log_msg.emit("Vous",text); command_queue.put(text); self.cmd_input.clear()
