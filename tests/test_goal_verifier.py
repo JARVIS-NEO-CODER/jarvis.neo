@@ -132,3 +132,18 @@ def test_close_app_goal_checks_background_processes(monkeypatch):
 
     assert result.achieved is False
     assert result.reason == "Le processus existe encore : fermeture non confirmée."
+
+
+def test_unrelated_builtin_action_cannot_use_foreground_change_as_proof():
+    result = GoalVerifier().verify(
+        "Ferme Chrome",
+        before=snap("chrome.exe", "Chrome"),
+        after=snap("explorer.exe", "Desktop"),
+        action_success=True,
+        action_verified=True,
+        action_name="action.show_hud",
+        action_kwargs={"target": "context"},
+    )
+
+    assert result.achieved is False
+    assert "vérificateur adapté" in result.reason
