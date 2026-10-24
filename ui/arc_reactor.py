@@ -71,12 +71,12 @@ class ArcReactor(QWidget):
             QPointF(-half, -half), QPointF(half, -half),
             QPointF(half, half), QPointF(-half, half),
         ]
-        painter.setPen(QPen(QColor("#c8ff68"), 3))
+        painter.setPen(QPen(QColor("#ff8a65"), 3))
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawPolygon(points)
 
         # Four small cuts make the square more distinctive than a plain shape.
-        painter.setPen(QPen(QColor("#8dcc3d"), 2))
+        painter.setPen(QPen(QColor("#c94f2d"), 2))
         cut = size * 0.18
         for x, y, dx, dy in (
             (-half, -half, cut, 0), (half, -half, -cut, 0),
@@ -98,18 +98,18 @@ class ArcReactor(QWidget):
         state_text, _ = self.STATES[self._state]
 
         # Outer metallic reactor body.
-        painter.setPen(QPen(QColor("#737a78"), max(8, int(size * 0.025))))
-        painter.setBrush(QColor("#242927"))
+        painter.setPen(QPen(QColor("#6c707b"), max(8, int(size * 0.025))))
+        painter.setBrush(QColor("#202127"))
         painter.drawEllipse(QPointF(0, 0), outer, outer)
 
         # Metallic inner ring and fine technical rings.
-        self._draw_ring(painter, outer * 0.91, max(3, size * 0.008), QColor("#a9afab"))
-        self._draw_ring(painter, outer * 0.78, max(2, size * 0.005), QColor("#555d59"))
-        self._draw_ring(painter, outer * 0.67, max(2, size * 0.004), QColor("#8a928d"), 8, 78)
-        self._draw_ring(painter, outer * 0.67, max(2, size * 0.004), QColor("#8a928d"), 188, 74)
+        self._draw_ring(painter, outer * 0.91, max(3, size * 0.008), QColor("#aeb3bf"))
+        self._draw_ring(painter, outer * 0.78, max(2, size * 0.005), QColor("#4b4f59"))
+        self._draw_ring(painter, outer * 0.67, max(2, size * 0.004), QColor("#858b98"), 8, 78)
+        self._draw_ring(painter, outer * 0.67, max(2, size * 0.004), QColor("#858b98"), 188, 74)
 
         # Small outer markers, kept sparse instead of filling the HUD with clutter.
-        painter.setPen(QPen(QColor("#66706b"), 2))
+        painter.setPen(QPen(QColor("#737987"), 2))
         marker_r = outer * 0.965
         for i in range(12):
             angle = i * 30 * pi / 180
@@ -124,7 +124,7 @@ class ArcReactor(QWidget):
         painter.setBrush(QColor(70, 125, 30, 45))
         painter.drawEllipse(QPointF(0, 0), glow_radius, glow_radius)
 
-        painter.setPen(QPen(QColor("#baff62"), max(3, int(size * 0.010))))
+        painter.setPen(QPen(QColor("#ff7043"), max(3, int(size * 0.010))))
         painter.setBrush(QColor("#72a936"))
         painter.drawEllipse(QPointF(0, 0), core, core)
 
@@ -132,7 +132,7 @@ class ArcReactor(QWidget):
         self._draw_square(painter, size * 0.155)
 
         # Minimal status text in the reactor center.
-        painter.setPen(QColor("#e9ffd0"))
+        painter.setPen(QColor("#f7eee9"))
         font = QFont("Segoe UI", max(8, int(size * 0.027)), QFont.Weight.DemiBold)
         painter.setFont(font)
         text_rect_w = size * 0.34
@@ -144,7 +144,7 @@ class ArcReactor(QWidget):
         )
 
         # Small NEO identifier below the status.
-        painter.setPen(QColor("#84937f"))
+        painter.setPen(QColor("#9296a2"))
         font_small = QFont("Segoe UI", max(6, int(size * 0.018)), QFont.Weight.Normal)
         painter.setFont(font_small)
         painter.drawText(
