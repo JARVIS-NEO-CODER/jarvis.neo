@@ -52,18 +52,18 @@ class GroqSettingsDialog(QDialog):
         self.setMinimumWidth(470)
         self.setStyleSheet(
             """
-            QDialog { background:#050907; color:#d9f5c4; }
-            QLabel { color:#b8d8b0; }
+            QDialog { background:#090a0e; color:#e8eaf0; }
+            QLabel { color:#b9bdc7; }
             QLineEdit, QComboBox {
-                background:#07110b; color:#e7f7df;
-                border:1px solid #304833; border-radius:7px; padding:8px;
+                background:#111218; color:#f3f4f6;
+                border:1px solid #38333a; border-radius:7px; padding:8px;
             }
-            QCheckBox { color:#ccefb4; }
+            QCheckBox { color:#f5c8bb; }
             QPushButton {
-                background:#0b1710; color:#ccefb4;
-                border:1px solid #304833; border-radius:7px; padding:8px 12px;
+                background:#15161c; color:#f5c8bb;
+                border:1px solid #38333a; border-radius:7px; padding:8px 12px;
             }
-            QPushButton:hover { background:#122419; border-color:#80ad54; }
+            QPushButton:hover { background:#21171a; border-color:#ff8a65; }
             """
         )
 
@@ -244,35 +244,35 @@ class NeoHud(QWidget):
         self.setObjectName("neoHud")
         self.setStyleSheet("""
             QWidget#neoHud {
-                background: #050907;
-                color: #d9f5c4;
+                background: #090a0e;
+                color: #e8eaf0;
             }
             QLabel#neoHeader {
-                color: #baff62;
+                color: #ff7043;
                 font-size: 13px;
                 font-weight: 700;
                 letter-spacing: 2px;
             }
             QLabel#neoSubHeader {
-                color: #657565;
+                color: #9296a2;
                 font-size: 9px;
                 letter-spacing: 1px;
             }
             QPushButton.neoControl {
-                background: #0b1710;
-                color: #ccefb4;
-                border: 1px solid #304833;
+                background: #15161c;
+                color: #f5c8bb;
+                border: 1px solid #38333a;
                 border-radius: 8px;
                 padding: 9px 14px;
                 font-size: 10px;
                 font-weight: 700;
             }
             QPushButton.neoControl:hover {
-                background: #122419;
-                border-color: #80ad54;
+                background: #21171a;
+                border-color: #ff8a65;
             }
             QPushButton.neoControl:pressed {
-                background: #1a3020;
+                background: #33201d;
             }
         """)
 
