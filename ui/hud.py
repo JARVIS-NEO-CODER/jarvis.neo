@@ -14,7 +14,7 @@ class HudPanel(QFrame):
         self.setObjectName("neoHudPanel")
         self.setStyleSheet("""
             QFrame#neoHudPanel {
-                background: rgba(8, 18, 13, 235);
+                background: rgba(13, 14, 19, 242);
                 border: 1px solid #38333a;
                 border-radius: 12px;
             }
