@@ -120,12 +120,12 @@ class ArcReactor(QWidget):
 
         # Green energy core.
         glow_radius = core * (1.35 + pulse * 0.14)
-        painter.setPen(QPen(QColor(155, 245, 65, 55), max(4, int(size * 0.018))))
-        painter.setBrush(QColor(70, 125, 30, 45))
+        painter.setPen(QPen(QColor(255, 112, 67, 48), max(4, int(size * 0.018))))
+        painter.setBrush(QColor(125, 49, 30, 38))
         painter.drawEllipse(QPointF(0, 0), glow_radius, glow_radius)
 
         painter.setPen(QPen(QColor("#ff7043"), max(3, int(size * 0.010))))
-        painter.setBrush(QColor("#72a936"))
+        painter.setBrush(QColor("#ff8a65"))
         painter.drawEllipse(QPointF(0, 0), core, core)
 
         # Signature rotating square.
