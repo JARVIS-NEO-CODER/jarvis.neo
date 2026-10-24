@@ -16,17 +16,17 @@ class ProviderSettingsDialog(QDialog):
         self.setWindowTitle("J.A.R.V.I.S. NEO • Paramètres IA")
         self.setMinimumWidth(560)
         self.setStyleSheet(
-            "QDialog{background:#07101c;color:#e8f7ff} QLabel{color:#c8e8f5} "
-            "QLineEdit,QComboBox{background:#0b1827;color:#fff;border:1px solid #23617a;padding:8px;border-radius:6px;min-height:20px} "
-            "QComboBox::drop-down{width:30px;border-left:1px solid #23617a} "
-            "QPushButton{background:#10283a;color:#63d9ff;border:1px solid #23617a;padding:9px;border-radius:6px} "
-            "QCheckBox{color:#c8e8f5}"
+            "QDialog{background:#090a0e;color:#e8eaf0} QLabel{color:#b9bdc7} "
+            "QLineEdit,QComboBox{background:#111218;color:#fff;border:1px solid #38333a;padding:8px;border-radius:6px;min-height:20px} "
+            "QComboBox::drop-down{width:30px;border-left:1px solid #38333a} "
+            "QPushButton{background:#15161c;color:#f5c8bb;border:1px solid #38333a;padding:9px;border-radius:6px} "
+            "QCheckBox{color:#b9bdc7}"
         )
         self.path = Path.home() / ".jarvis_neo" / "jarvis_config.json"
         self.config = self._load()
         root = QVBoxLayout(self)
         title = QLabel("⚡ CERVEAU IA • FOURNISSEUR & MODÈLE")
-        title.setStyleSheet("font-weight:bold;color:#63d9ff;font-size:15px")
+        title.setStyleSheet("font-weight:bold;color:#f5c8bb;font-size:15px")
         root.addWidget(title)
         root.addWidget(QLabel("Le menu ci-dessous est la liste réelle des modèles que J.A.R.V.I.S. peut sélectionner."))
 
@@ -58,7 +58,7 @@ class ProviderSettingsDialog(QDialog):
 
         self.model_hint = QLabel()
         self.model_hint.setWordWrap(True)
-        self.model_hint.setStyleSheet("color:#7f9aaa;font-size:11px")
+        self.model_hint.setStyleSheet("color:#9296a2;font-size:11px")
         root.addWidget(self.model_hint)
         self._refresh_models()
 
