@@ -42,7 +42,7 @@ class HudCockpit(QWidget):
             b.clicked.connect(lambda _, a=action: self._action(a))
             actions.addWidget(b)
         root.addLayout(actions)
-        self.setStyleSheet("QWidget{background:rgba(8,12,20,235);border:1px solid rgba(120,200,255,120);border-radius:12px;} QPushButton{padding:7px;border:1px solid rgba(120,200,255,90);border-radius:6px;background:rgba(20,30,45,220);} QPushButton:hover{background:rgba(50,70,95,230);}")
+        self.setStyleSheet("QWidget{background:rgba(13,14,19,242);border:1px solid rgba(255,112,67,130);border-radius:12px;} QPushButton{padding:7px;border:1px solid rgba(255,112,67,90);border-radius:6px;background:rgba(25,23,27,230);} QPushButton:hover{background:rgba(42,27,25,230);}")
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.refresh)
         self.timer.start(1000)
