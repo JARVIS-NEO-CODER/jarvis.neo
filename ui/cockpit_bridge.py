@@ -21,10 +21,10 @@ def install(assistant) -> bool:
             button.setToolTip("Ouvrir le centre de commande J.A.R.V.I.S. NEO")
             button.setMinimumHeight(34)
             button.setStyleSheet(
-                "QPushButton { background:rgba(0,243,255,0.07); color:#00f3ff; "
-                "border:1px solid rgba(0,243,255,0.45); border-radius:7px; "
+                "QPushButton { background:rgba(255,112,67,0.07); color:#ff8a65; "
+                "border:1px solid rgba(255,112,67,0.45); border-radius:7px; "
                 "padding:7px 10px; font-weight:700; }"
-                "QPushButton:hover { background:rgba(0,243,255,0.16); border-color:#00f3ff; }"
+                "QPushButton:hover { background:rgba(255,112,67,0.16); border-color:#ff8a65; }"
             )
 
             def open_cockpit():
