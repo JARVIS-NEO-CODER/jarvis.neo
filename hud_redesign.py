@@ -3,10 +3,10 @@ from PyQt6.QtCore import QTimer, Qt, QPointF
 from PyQt6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPen, QBrush
 from PyQt6.QtWidgets import QFrame, QGridLayout, QHBoxLayout, QLabel, QProgressBar, QPushButton, QVBoxLayout, QWidget
 
-CYAN=QColor('#62F6FF'); WHITE=QColor('#EAFBFF'); GREEN=QColor('#58FFC4'); BG=QColor('#050A13')
+CYAN=QColor('#ff8a65'); WHITE=QColor('#e8eaf0'); GREEN=QColor('#70d6a3'); BG=QColor('#090a0e')
 
 def panel_style():
-    return """QFrame{background:rgba(5,12,24,225);border:1px solid rgba(98,246,255,45);border-radius:12px;} QLabel{color:#EAFBFF;background:transparent;border:none;font-family:'Segoe UI';} QPushButton{color:#62F6FF;background:rgba(98,246,255,10);border:1px solid rgba(98,246,255,65);border-radius:8px;padding:8px 12px;font-size:10px;font-weight:700;} QPushButton:hover{background:rgba(98,246,255,24);border-color:#62F6FF;}"""
+    return """QFrame{background:rgba(17,18,24,242);border:1px solid rgba(255,112,67,45);border-radius:12px;} QLabel{color:#e8eaf0;background:transparent;border:none;font-family:'Segoe UI';} QPushButton{color:#ff8a65;background:rgba(255,112,67,10);border:1px solid rgba(255,112,67,65);border-radius:8px;padding:8px 12px;font-size:10px;font-weight:700;} QPushButton:hover{background:rgba(255,112,67,24);border-color:#ff8a65;}"""
 
 class NeoFrame(QFrame):
     def __init__(self,parent=None):
@@ -26,7 +26,7 @@ class NeoButton(QPushButton):
 
 class MetricCard(QFrame):
     def __init__(self,name,parent=None):
-        super().__init__(parent); self.setStyleSheet(panel_style()); l=QVBoxLayout(self); l.setContentsMargins(12,10,12,10); r=QHBoxLayout(); self.name=QLabel(name.upper()); self.name.setStyleSheet('color:#7895A5;font-size:9px;font-weight:700;letter-spacing:1.5px;'); self.value=QLabel('0%'); self.value.setAlignment(Qt.AlignmentFlag.AlignRight); self.value.setStyleSheet('color:#EAFBFF;font-size:14px;font-weight:700;'); r.addWidget(self.name);r.addWidget(self.value);l.addLayout(r); self.bar=QProgressBar();self.bar.setRange(0,100);self.bar.setValue(0);self.bar.setTextVisible(False);self.bar.setFixedHeight(4);self.bar.setStyleSheet('QProgressBar{background:rgba(255,255,255,12);border:0;border-radius:2px;} QProgressBar::chunk{background:#62F6FF;border-radius:2px;}');l.addWidget(self.bar)
+        super().__init__(parent); self.setStyleSheet(panel_style()); l=QVBoxLayout(self); l.setContentsMargins(12,10,12,10); r=QHBoxLayout(); self.name=QLabel(name.upper()); self.name.setStyleSheet('color:#9296a2;font-size:9px;font-weight:700;letter-spacing:1.5px;'); self.value=QLabel('0%'); self.value.setAlignment(Qt.AlignmentFlag.AlignRight); self.value.setStyleSheet('color:#e8eaf0;font-size:14px;font-weight:700;'); r.addWidget(self.name);r.addWidget(self.value);l.addLayout(r); self.bar=QProgressBar();self.bar.setRange(0,100);self.bar.setValue(0);self.bar.setTextVisible(False);self.bar.setFixedHeight(4);self.bar.setStyleSheet('QProgressBar{background:rgba(255,255,255,12);border:0;border-radius:2px;} QProgressBar::chunk{background:#ff8a65;border-radius:2px;}');l.addWidget(self.bar)
     def set_value(self,value): value=max(0,min(100,int(value)));self.bar.setValue(value);self.value.setText(f'{value}%')
 
 class ReactorWidget(QWidget):
@@ -43,13 +43,13 @@ class ReactorWidget(QWidget):
 
 class StatusStrip(QFrame):
     def __init__(self,parent=None):
-        super().__init__(parent);self.setStyleSheet(panel_style());l=QHBoxLayout(self);l.setContentsMargins(12,7,12,7);self.dot=QLabel('●');self.dot.setStyleSheet('color:#58FFC4;font-size:11px;border:none;');self.text=QLabel('NEO CORE  /  ONLINE');self.text.setStyleSheet('color:#A9C8D4;font-size:10px;font-weight:700;letter-spacing:1.2px;border:none;');self.detail=QLabel('READY');self.detail.setAlignment(Qt.AlignmentFlag.AlignRight);self.detail.setStyleSheet('color:#62F6FF;font-size:9px;font-weight:700;border:none;');l.addWidget(self.dot);l.addWidget(self.text);l.addStretch();l.addWidget(self.detail)
-    def set_state(self,label,detail='READY',danger=False): self.text.setText(f'NEO CORE  /  {label.upper()}');self.detail.setText(detail.upper());self.dot.setStyleSheet(f"color:{'#FF5E6C' if danger else '#58FFC4'};font-size:11px;border:none;")
+        super().__init__(parent);self.setStyleSheet(panel_style());l=QHBoxLayout(self);l.setContentsMargins(12,7,12,7);self.dot=QLabel('●');self.dot.setStyleSheet('color:#70d6a3;font-size:11px;border:none;');self.text=QLabel('NEO CORE  /  ONLINE');self.text.setStyleSheet('color:#b9bdc7;font-size:10px;font-weight:700;letter-spacing:1.2px;border:none;');self.detail=QLabel('READY');self.detail.setAlignment(Qt.AlignmentFlag.AlignRight);self.detail.setStyleSheet('color:#ff8a65;font-size:9px;font-weight:700;border:none;');l.addWidget(self.dot);l.addWidget(self.text);l.addStretch();l.addWidget(self.detail)
+    def set_state(self,label,detail='READY',danger=False): self.text.setText(f'NEO CORE  /  {label.upper()}');self.detail.setText(detail.upper());self.dot.setStyleSheet(f"color:{'#ff6f78' if danger else '#70d6a3'};font-size:11px;border:none;")
 
 class ActivityPanel(QFrame):
     def __init__(self,parent=None):
-        super().__init__(parent);self.setStyleSheet(panel_style());l=QVBoxLayout(self);l.setContentsMargins(12,10,12,10);t=QLabel('LIVE ACTIVITY');t.setStyleSheet('color:#7895A5;font-size:9px;font-weight:700;letter-spacing:1.5px;border:none;');l.addWidget(t);self.lines=[]
-        for text in ('Core initialized','Memory channel ready','Waiting for directive'): lbl=QLabel('›  '+text);lbl.setStyleSheet('color:#9BB4BF;font-family:Consolas;font-size:9px;border:none;');l.addWidget(lbl);self.lines.append(lbl)
+        super().__init__(parent);self.setStyleSheet(panel_style());l=QVBoxLayout(self);l.setContentsMargins(12,10,12,10);t=QLabel('LIVE ACTIVITY');t.setStyleSheet('color:#9296a2;font-size:9px;font-weight:700;letter-spacing:1.5px;border:none;');l.addWidget(t);self.lines=[]
+        for text in ('Core initialized','Memory channel ready','Waiting for directive'): lbl=QLabel('›  '+text);lbl.setStyleSheet('color:#c4c7d0;font-family:Consolas;font-size:9px;border:none;');l.addWidget(lbl);self.lines.append(lbl)
     def push(self,text): self.lines[-1].setText('›  '+text)
 
 class HudSidebar(QWidget):
