@@ -26,7 +26,7 @@ QComboBox QAbstractItemView { background: #111218; color: #e8eaf0; border: 1px s
 QCheckBox { color: #b9bdc7; spacing: 8px; padding: 3px; }
 QCheckBox::indicator { width: 16px; height: 16px; border-radius: 4px; border: 1px solid #514047; background: #0d0e13; }
 QCheckBox::indicator:checked { background: #ff7043; border: 1px solid #ffb199; }
-QProgressBar { background: #0d0e13; border: 1px solid #38333a; border-radius: 7px; text-align: center; color: #dffaff; min-height: 10px; }
+QProgressBar { background: #0d0e13; border: 1px solid #38333a; border-radius: 7px; text-align: center; color: #e8eaf0; min-height: 10px; }
 QProgressBar::chunk { background: #ff7043; border-radius: 6px; }
 QScrollArea { background: transparent; border: none; }
 QScrollBar:vertical { background: #0d0e13; width: 9px; margin: 4px; border-radius: 4px; }
@@ -35,7 +35,7 @@ QScrollBar::handle:vertical:hover { background: #ff8a65; }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }
 QTableWidget { background: #111218; alternate-background-color: #171820; color: #e8eaf0; border: 1px solid #38333a; border-radius: 10px; gridline-color: #25262d; }
 QHeaderView::section { background: #171820; color: #ff8a65; border: none; border-bottom: 1px solid #38333a; padding: 7px; font-weight: 700; }
-QToolTip { background: #111218; color: #dffaff; border: 1px solid #ff8a65; padding: 6px 8px; border-radius: 6px; }
+QToolTip { background: #111218; color: #e8eaf0; border: 1px solid #ff8a65; padding: 6px 8px; border-radius: 6px; }
 """
 
 def apply_theme(app, window=None):
