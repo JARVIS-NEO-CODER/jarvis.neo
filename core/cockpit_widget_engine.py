@@ -33,7 +33,7 @@ class CockpitWidgetEngine:
         self.host = host; self.panels: dict[str, tuple[CockpitPanel, QWidget]] = {}
         self.layout = host.layout() or QVBoxLayout(host); self.layout.setContentsMargins(0,0,0,0); self.layout.setSpacing(6)
         self.network = QNetworkAccessManager(host)
-        self.empty = QLabel("NO DYNAMIC DATA"); self.empty.setAlignment(Qt.AlignmentFlag.AlignCenter); self.empty.setStyleSheet("color:#456b78;font-size:8px;letter-spacing:1.5px;padding:14px;"); self.layout.addWidget(self.empty)
+        self.empty = QLabel("NO DYNAMIC DATA"); self.empty.setAlignment(Qt.AlignmentFlag.AlignCenter); self.empty.setStyleSheet("color:#9296a2;font-size:8px;letter-spacing:1.5px;padding:14px;"); self.layout.addWidget(self.empty)
     @staticmethod
     def _valid_url(value: str) -> bool:
         try:
@@ -51,7 +51,7 @@ class CockpitWidgetEngine:
         if panel_id in self.panels:
             _,widget=self.panels[panel_id]; self._render(widget,panel); self.panels[panel_id]=(panel,widget); return True
         if len(self.panels)>=self.MAX_PANELS: self.remove_panel(next(iter(self.panels)))
-        widget=QFrame(self.host); widget.setStyleSheet("QFrame { background:rgba(0,243,255,0.035); border:1px solid rgba(0,243,255,0.20); border-radius:8px; } QLabel { background:transparent; border:none; }"); self.layout.addWidget(widget); self._render(widget,panel); self.panels[panel_id]=(panel,widget); self.empty.setVisible(False); return True
+        widget=QFrame(self.host); widget.setStyleSheet("QFrame { background:rgba(255,112,67,0.035); border:1px solid rgba(255,112,67,0.20); border-radius:8px; } QLabel { background:transparent; border:none; }"); self.layout.addWidget(widget); self._render(widget,panel); self.panels[panel_id]=(panel,widget); self.empty.setVisible(False); return True
     def remove_panel(self,panel_id):
         item=self.panels.pop(str(panel_id),None)
         if not item: return False
@@ -65,17 +65,17 @@ class CockpitWidgetEngine:
                 item=old.takeAt(0); child=item.widget()
                 if child: child.deleteLater()
         layout=old or QVBoxLayout(widget); layout.setContentsMargins(9,7,9,7); layout.setSpacing(5)
-        title=QLabel(f"◈ {panel.title.upper()}"); title.setStyleSheet("color:#00f3ff;font-size:9px;font-weight:900;letter-spacing:1px;"); layout.addWidget(title)
+        title=QLabel(f"◈ {panel.title.upper()}"); title.setStyleSheet("color:#ff8a65;font-size:9px;font-weight:900;letter-spacing:1px;"); layout.addWidget(title)
         if panel.kind=="web" and WEBENGINE_OK:
             view=QWebEngineView(widget); view.setMinimumHeight(210); view.setUrl(QUrl(panel.source)); layout.addWidget(view)
         elif panel.kind=="web":
-            body=QLabel(f"Navigateur intégré indisponible.\n{panel.source}"); body.setWordWrap(True); body.setStyleSheet("color:#bfefff;font-size:9px;"); layout.addWidget(body)
+            body=QLabel(f"Navigateur intégré indisponible.\n{panel.source}"); body.setWordWrap(True); body.setStyleSheet("color:#e8eaf0;font-size:9px;"); layout.addWidget(body)
         elif panel.kind=="image":
-            image=QLabel("CHARGEMENT IMAGE…"); image.setAlignment(Qt.AlignmentFlag.AlignCenter); image.setMinimumHeight(130); image.setStyleSheet("color:#7895a5;font-size:8px;border:none;"); layout.addWidget(image); reply=self.network.get(QNetworkRequest(QUrl(panel.source))); reply.finished.connect(lambda r=reply,label=image:self._finish_image(r,label))
+            image=QLabel("CHARGEMENT IMAGE…"); image.setAlignment(Qt.AlignmentFlag.AlignCenter); image.setMinimumHeight(130); image.setStyleSheet("color:#9296a2;font-size:8px;border:none;"); layout.addWidget(image); reply=self.network.get(QNetworkRequest(QUrl(panel.source))); reply.finished.connect(lambda r=reply,label=image:self._finish_image(r,label))
         else:
-            body=QLabel(panel.content or ""); body.setWordWrap(True); body.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse); body.setStyleSheet("color:#bfefff;font-size:9px;"); layout.addWidget(body)
+            body=QLabel(panel.content or ""); body.setWordWrap(True); body.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse); body.setStyleSheet("color:#e8eaf0;font-size:9px;"); layout.addWidget(body)
         if panel.source and panel.kind not in {"web","image"}:
-            source=QLabel(panel.source); source.setStyleSheet("color:#4d8290;font-size:7px;"); source.setWordWrap(True); layout.addWidget(source)
+            source=QLabel(panel.source); source.setStyleSheet("color:#9296a2;font-size:7px;"); source.setWordWrap(True); layout.addWidget(source)
     def _finish_image(self,reply,label):
         try:
             if reply.error(): label.setText("IMAGE INDISPONIBLE"); reply.deleteLater(); return
