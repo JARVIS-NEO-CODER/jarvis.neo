@@ -15,11 +15,11 @@ class HudPanel(QFrame):
         self.setStyleSheet("""
             QFrame#neoHudPanel {
                 background: rgba(8, 18, 13, 235);
-                border: 1px solid #354b3b;
+                border: 1px solid #38333a;
                 border-radius: 12px;
             }
             QLabel#neoHudTitle {
-                color: #baff62;
+                color: #ff7043;
                 font-size: 11px;
                 font-weight: 700;
                 letter-spacing: 1px;
