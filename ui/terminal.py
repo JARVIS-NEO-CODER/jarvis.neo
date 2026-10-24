@@ -20,8 +20,8 @@ class NeoTerminal(QPlainTextEdit):
             QPlainTextEdit#neoTerminal {
                 background: transparent;
                 border: none;
-                color: #d9f5c4;
-                selection-background-color: #304c2f;
+                color: #e8eaf0;
+                selection-background-color: #6b3527;
                 font-family: Consolas, 'Courier New', monospace;
                 font-size: 11px;
             }
