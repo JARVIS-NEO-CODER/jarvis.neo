@@ -135,7 +135,7 @@ class GroqSettingsDialog(QDialog):
         root.addLayout(actions)
 
         self.status = QLabel()
-        self.status.setStyleSheet("color:#7895A5;font-size:10px;")
+        self.status.setStyleSheet("color:#9296a2;font-size:10px;")
         self.status.setWordWrap(True)
         root.addWidget(self.status)
         self._refresh_models()
@@ -199,7 +199,7 @@ class GroqSettingsDialog(QDialog):
                 max_tokens=8,
             )
             self.status.setText("✓ Groq répond correctement : " + result.strip()[:80])
-            self.status.setStyleSheet("color:#58FFC4;font-size:10px;")
+            self.status.setStyleSheet("color:#70d6a3;font-size:10px;")
         except Exception as exc:
             self.status.setText("✗ Test Groq échoué : " + str(exc))
             self.status.setStyleSheet("color:#FF7A86;font-size:10px;")
