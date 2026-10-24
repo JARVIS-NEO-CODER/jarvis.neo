@@ -199,20 +199,20 @@ class NeoMainHud(QMainWindow):
 
     def _apply_style(self) -> None:
         self.setStyleSheet("""
-        #NeoMainHud, #Root { background:#070b10; color:#d9f7ff; }
-        #Sidebar { background:#0a1118; border-right:1px solid #16313b; }
-        #Brand { color:#d9f7ff; font-size:24px; font-weight:700; }
-        #SubBrand, #CardLabel { color:#5f8c98; font-size:10px; font-weight:700; letter-spacing:1px; }
-        QPushButton { background:#0c1820; color:#b8dbe2; border:1px solid #183843; border-radius:6px; padding:10px; text-align:left; }
-        QPushButton:hover { background:#10232c; border-color:#2b6877; }
-        QPushButton:checked { background:#12313a; border-color:#4aa8bb; color:#e8fcff; }
-        #TopBar, #Card, #Panel, #Hero { background:#0b141b; border:1px solid #16343f; border-radius:8px; }
+        #NeoMainHud, #Root { background:#090a0e; color:#e8eaf0; }
+        #Sidebar { background:#111218; border-right:1px solid #38333a; }
+        #Brand { color:#e8eaf0; font-size:24px; font-weight:700; }
+        #SubBrand, #CardLabel { color:#9296a2; font-size:10px; font-weight:700; letter-spacing:1px; }
+        QPushButton { background:#15161c; color:#e8eaf0; border:1px solid #38333a; border-radius:6px; padding:10px; text-align:left; }
+        QPushButton:hover { background:#21171a; border-color:#ff8a65; }
+        QPushButton:checked { background:#33201d; border-color:#ff7043; color:#ffe0d5; }
+        #TopBar, #Card, #Panel, #Hero { background:#111218; border:1px solid #38333a; border-radius:8px; }
         #Status { color:#66d9b4; font-weight:700; }
-        #HeroTitle { color:#86d9e8; font-size:26px; font-weight:700; }
-        #HeroState { color:#70aab5; font-size:12px; }
-        #CardValue { color:#e3fbff; font-size:20px; font-weight:700; }
-        #Detail { color:#9bc6cf; padding:6px; }
-        #Activity { background:#05090d; color:#83aeb8; border:1px solid #132e38; border-radius:7px; padding:9px; font-family:'Consolas'; font-size:10px; }
+        #HeroTitle { color:#ff8a65; font-size:26px; font-weight:700; }
+        #HeroState { color:#b9bdc7; font-size:12px; }
+        #CardValue { color:#e8eaf0; font-size:20px; font-weight:700; }
+        #Detail { color:#b9bdc7; padding:6px; }
+        #Activity { background:#0d0e13; color:#c4c7d0; border:1px solid #38333a; border-radius:7px; padding:9px; font-family:'Consolas'; font-size:10px; }
         QScrollArea { border:0; }
         """)
 
