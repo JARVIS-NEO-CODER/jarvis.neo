@@ -174,7 +174,7 @@ class NeoMainHud(QMainWindow):
         QLineEdit { background:#0d0e13; color:#e8eaf0; border:1px solid #38333a; border-radius:6px; padding:10px; }
         #MiniRoot { background:#111218; border:1px solid #38333a; border-radius:14px; }
         #MiniOrb { color:#70d6a3; font-size:19px; }
-        #MiniName { color:#e5fbff; font-size:12px; font-weight:700; }
+        #MiniName { color:#e8eaf0; font-size:12px; font-weight:700; }
         #MiniStatus { font-size:9px; letter-spacing:1px; }
         #MiniMetrics, #MiniContext { font-size:9px; }
         #MiniClock { color:#e8eaf0; font-size:12px; font-weight:700; }
