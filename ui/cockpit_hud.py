@@ -106,9 +106,10 @@ class CockpitHud(QDialog):
         header=QHBoxLayout(); brand=QLabel("J.A.R.V.I.S. NEO"); brand.setStyleSheet(f"color:{CYAN};font-size:21px;font-weight:800;letter-spacing:2.5px;")
         subtitle=QLabel("NEURAL COMMAND INTERFACE  //  LOCAL CORE"); subtitle.setStyleSheet("color:#456774;font-size:9px;font-weight:600;letter-spacing:1.2px;")
         self.status=QLabel("● ONLINE"); self.status.setStyleSheet(f"color:{GREEN};font-size:9px;font-weight:900;"); self.mode=QLabel("NORMAL"); self.mode.setStyleSheet("color:#7A98A4;font-size:8px;font-weight:800;")
+        settings_button=QPushButton("⚙ Paramètres IA"); settings_button.setAutoDefault(False); settings_button.setDefault(False); settings_button.setToolTip("Ouvrir les paramètres du fournisseur et du modèle IA"); settings_button.setAccessibleName("Paramètres IA"); settings_button.clicked.connect(self._open_settings)
         close=QPushButton("×"); close.setFixedSize(32,28); close.setAutoDefault(False); close.setDefault(False); close.setToolTip("Masquer la grande fenêtre et garder le petit réacteur visible"); close.setAccessibleName("Masquer la fenêtre"); close.clicked.connect(self._minimize_to_reactor)
-        header.addWidget(brand); header.addSpacing(12); header.addWidget(subtitle); header.addStretch(); header.addWidget(self.status); header.addSpacing(10); header.addWidget(self.mode); header.addSpacing(8); header.addWidget(close); root.addLayout(header)
-        line=QFrame(); line.setFixedHeight(1); line.setStyleSheet("background:rgba(255,112,67,70);border:none;"); root.addWidget(line); self._header_widgets=[brand,subtitle,self.status,self.mode,close]
+        header.addWidget(brand); header.addSpacing(12); header.addWidget(subtitle); header.addStretch(); header.addWidget(self.status); header.addSpacing(10); header.addWidget(self.mode); header.addSpacing(12); header.addWidget(settings_button); header.addSpacing(8); header.addWidget(close); root.addLayout(header)
+        line=QFrame(); line.setFixedHeight(1); line.setStyleSheet("background:rgba(255,112,67,70);border:none;"); root.addWidget(line); self._header_widgets=[brand,subtitle,self.status,self.mode,settings_button,close]
 
         body=QHBoxLayout(); body.setSpacing(10); self._body_widgets=[]
         left,ll=self._panel("CORE TELEMETRY"); self.reactor=Reactor(); self.reactor.clicked.connect(self._restore_from_reactor); ll.addWidget(self.reactor,0,Qt.AlignmentFlag.AlignCenter)
@@ -139,6 +140,15 @@ class CockpitHud(QDialog):
         compact.clicked.connect(self._toggle_size); footer.addWidget(compact); self._footer_widgets.append(compact)
         footer.addStretch(); self.pin=QPushButton("Toujours visible ✓"); self.pin.setAutoDefault(False); self.pin.setDefault(False); self.pin.setToolTip("Garder Black Halo au-dessus des autres fenêtres"); self.pin.setAccessibleName("Garder Black Halo au premier plan"); self.pin.setCheckable(True); self.pin.setChecked(True); self.pin.clicked.connect(self._toggle_pin); footer.addWidget(self.pin); self._footer_widgets.append(self.pin); root.addLayout(footer)
         self.mini_reactor=Reactor(self); self.mini_reactor.setMinimumSize(0,0); self.mini_reactor.setFixedSize(190,190); self.mini_reactor.clicked.connect(self._restore_from_reactor); self.mini_reactor.hide()
+
+    def _open_settings(self):
+        """Open the existing AI provider/model settings dialog from the cockpit."""
+        try:
+            from ui.provider_settings import ProviderSettingsDialog
+            ProviderSettingsDialog(self).exec()
+        except Exception as exc:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.critical(self, "Paramètres IA", f"Impossible d'ouvrir les paramètres : {exc}")
 
     def _command(self,command):
         try:
