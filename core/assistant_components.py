@@ -647,13 +647,13 @@ class JarvisWindow(QMainWindow):
             QLabel { font-family:'Segoe UI'; }
             QPushButton {
                 background:#171a21; color:#d9dde5; border:1px solid #303541;
-                border-radius:8px; padding:10px 12px; font-size:11px;
+                border-radius:10px; padding:10px 12px; font-size:11px;
                 text-align:center;
             }
             QPushButton:hover { background:#2a1b19; border-color:#ff8a65; }
             QLineEdit {
                 background:#101219; color:#f0f2f5; border:1px solid #303541;
-                border-radius:9px; padding:10px 12px; font-size:12px;
+                border-radius:10px; padding:10px 12px; font-size:12px;
             }
             QLineEdit:focus { border-color:#ff7043; }
             QMenu { background:#151820; color:#e4e7ed; border:1px solid #303541; padding:5px; }
