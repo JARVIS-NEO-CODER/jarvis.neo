@@ -159,27 +159,27 @@ class NeoMainHud(QMainWindow):
 
     def _style(self):
         self.setStyleSheet("""
-        #Root { background:#070b10; color:#d9f7ff; }
-        #Header, #Hero, #Card, #Panel, #ActivityPanel { background:#0b141b; border:1px solid #173845; border-radius:9px; }
-        #Title { color:#e8fcff; font-size:24px; font-weight:700; }
-        #Subtitle { color:#5f929f; font-size:10px; letter-spacing:2px; margin-left:10px; }
-        #Online, #MiniStatus { color:#61e0b4; font-weight:700; }
-        #HeroTitle { color:#78eaf5; font-size:27px; font-weight:700; }
-        #HeroDetail, #Detail, #Activity, #MiniMetrics, #MiniContext { color:#86aeb8; }
-        #Caption { color:#5f8b96; font-size:10px; font-weight:700; }
-        #Value { color:#e3fbff; font-size:21px; font-weight:700; }
-        QPushButton { background:#0c1b23; color:#bfe1e8; border:1px solid #1d4654; border-radius:6px; padding:9px 12px; }
-        QPushButton:hover { background:#102a34; border-color:#4ba9bb; }
-        #MobileButton { color:#61e0b4; border-color:#2c6878; padding:7px 10px; }
-        QLineEdit { background:#050a0f; color:#dffaff; border:1px solid #1d4654; border-radius:6px; padding:10px; }
-        #MiniRoot { background:#081117; border:1px solid #245363; border-radius:14px; }
-        #MiniOrb { color:#61e0b4; font-size:19px; }
-        #MiniName { color:#e5fbff; font-size:12px; font-weight:700; }
+        #Root { background:#090a0e; color:#e8eaf0; }
+        #Header, #Hero, #Card, #Panel, #ActivityPanel { background:#111218; border:1px solid #38333a; border-radius:9px; }
+        #Title { color:#e8eaf0; font-size:24px; font-weight:700; }
+        #Subtitle { color:#9296a2; font-size:10px; letter-spacing:2px; margin-left:10px; }
+        #Online, #MiniStatus { color:#70d6a3; font-weight:700; }
+        #HeroTitle { color:#ff8a65; font-size:27px; font-weight:700; }
+        #HeroDetail, #Detail, #Activity, #MiniMetrics, #MiniContext { color:#b9bdc7; }
+        #Caption { color:#9296a2; font-size:10px; font-weight:700; }
+        #Value { color:#e8eaf0; font-size:21px; font-weight:700; }
+        QPushButton { background:#15161c; color:#e8eaf0; border:1px solid #38333a; border-radius:6px; padding:9px 12px; }
+        QPushButton:hover { background:#21171a; border-color:#ff8a65; }
+        #MobileButton { color:#70d6a3; border-color:#514047; padding:7px 10px; }
+        QLineEdit { background:#0d0e13; color:#e8eaf0; border:1px solid #38333a; border-radius:6px; padding:10px; }
+        #MiniRoot { background:#111218; border:1px solid #38333a; border-radius:14px; }
+        #MiniOrb { color:#70d6a3; font-size:19px; }
+        #MiniName { color:#e8eaf0; font-size:12px; font-weight:700; }
         #MiniStatus { font-size:9px; letter-spacing:1px; }
         #MiniMetrics, #MiniContext { font-size:9px; }
-        #MiniClock { color:#dffaff; font-size:12px; font-weight:700; }
-        #MiniButton { background:#0d2029; color:#78eaf5; border:1px solid #285968; border-radius:8px; padding:0; font-size:16px; }
-        #MiniButton:hover { background:#12303a; border-color:#61d9e7; }
+        #MiniClock { color:#e8eaf0; font-size:12px; font-weight:700; }
+        #MiniButton { background:#19171b; color:#ff8a65; border:1px solid #514047; border-radius:8px; padding:0; font-size:16px; }
+        #MiniButton:hover { background:#2a1b19; border-color:#ff8a65; }
         """)
 
     def _setup_tray(self):
@@ -201,8 +201,8 @@ class NeoMainHud(QMainWindow):
     def _make_tray_icon():
         pixmap = QPixmap(32, 32); pixmap.fill(Qt.GlobalColor.transparent)
         painter = QPainter(pixmap); painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setBrush(QBrush(QColor("#61e0b4"))); painter.setPen(Qt.PenStyle.NoPen); painter.drawEllipse(5, 5, 22, 22)
-        painter.setBrush(QBrush(QColor("#071016"))); painter.drawEllipse(11, 11, 10, 10); painter.end()
+        painter.setBrush(QBrush(QColor("#70d6a3"))); painter.setPen(Qt.PenStyle.NoPen); painter.drawEllipse(5, 5, 22, 22)
+        painter.setBrush(QBrush(QColor("#15161c"))); painter.drawEllipse(11, 11, 10, 10); painter.end()
         return QIcon(pixmap)
 
     def _config(self):

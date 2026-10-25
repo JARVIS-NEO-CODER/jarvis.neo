@@ -14,16 +14,16 @@ try:
 except Exception:
     psutil = None
 
-CYAN, WHITE, GREEN, RED, BG = "#62F6FF", "#EAFBFF", "#58FFC4", "#FF6B7A", "#02060D"
+CYAN, WHITE, GREEN, RED, BG = "#ff8a65", "#e8eaf0", "#70d6a3", "#ff6f78", "#090a0e"
 
 
 def panel_style() -> str:
-    return f"""QFrame.cockpitPanel {{ background:rgba(6,16,27,238); border:1px solid rgba(98,246,255,52); border-radius:14px; }}
+    return f"""QFrame.cockpitPanel {{ background:rgba(17,18,24,242); border:1px solid rgba(255,112,67,52); border-radius:14px; }}
 QLabel {{ color:{WHITE}; background:transparent; border:none; }}
-QPushButton {{ color:{CYAN}; background:rgba(98,246,255,7); border:1px solid rgba(98,246,255,48); border-radius:7px; padding:7px 8px; font-size:8px; font-weight:800; }}
-QPushButton:hover {{ background:rgba(98,246,255,18); border-color:{CYAN}; }}
-QPushButton:pressed {{ background:rgba(98,246,255,30); }}
-QPushButton:checked {{ background:rgba(98,246,255,24); border-color:{CYAN}; }}
+QPushButton {{ color:{CYAN}; background:rgba(255,112,67,7); border:1px solid rgba(255,112,67,48); border-radius:7px; padding:7px 8px; font-size:8px; font-weight:800; }}
+QPushButton:hover {{ background:rgba(255,112,67,18); border-color:{CYAN}; }}
+QPushButton:pressed {{ background:rgba(255,112,67,30); }}
+QPushButton:checked {{ background:rgba(255,112,67,24); border-color:{CYAN}; }}
 QScrollArea {{ background:transparent; border:none; }}"""
 
 
@@ -47,7 +47,7 @@ class Reactor(QWidget):
         c = QPointF(self.width()/2, self.height()/2); r = min(self.width(), self.height())/2-16
         active = self.status in {"LISTENING", "SPEAKING", "THINKING", "PROCESSING"}
         color = QColor(GREEN if self.status in {"LISTENING", "SPEAKING"} else RED if self.status == "ERROR" else CYAN)
-        p.setPen(Qt.PenStyle.NoPen); p.setBrush(QColor(3,14,24,245)); p.drawEllipse(c,r,r)
+        p.setPen(Qt.PenStyle.NoPen); p.setBrush(QColor(13,14,19,245)); p.drawEllipse(c,r,r)
         for i in range(48):
             p.save(); p.translate(c); p.rotate(i*7.5+self.angle*.12); alpha = 150 if i%4==0 else 42
             p.setPen(QPen(QColor(color.red(),color.green(),color.blue(),alpha),1.5)); length=13 if i%4==0 else 6
@@ -106,7 +106,7 @@ class CockpitHud(QDialog):
         self.status=QLabel("● ONLINE"); self.status.setStyleSheet(f"color:{GREEN};font-size:9px;font-weight:900;"); self.mode=QLabel("NORMAL"); self.mode.setStyleSheet("color:#7A98A4;font-size:8px;font-weight:800;")
         close=QPushButton("×"); close.setFixedSize(32,28); close.clicked.connect(self._minimize_to_reactor)
         header.addWidget(brand); header.addSpacing(12); header.addWidget(subtitle); header.addStretch(); header.addWidget(self.status); header.addSpacing(10); header.addWidget(self.mode); header.addSpacing(8); header.addWidget(close); root.addLayout(header)
-        line=QFrame(); line.setFixedHeight(1); line.setStyleSheet("background:rgba(98,246,255,70);border:none;"); root.addWidget(line); self._header_widgets=[brand,subtitle,self.status,self.mode,close]
+        line=QFrame(); line.setFixedHeight(1); line.setStyleSheet("background:rgba(255,112,67,70);border:none;"); root.addWidget(line); self._header_widgets=[brand,subtitle,self.status,self.mode,close]
 
         body=QHBoxLayout(); body.setSpacing(10); self._body_widgets=[]
         left,ll=self._panel("CORE TELEMETRY"); self.reactor=Reactor(); self.reactor.clicked.connect(self._restore_from_reactor); ll.addWidget(self.reactor,0,Qt.AlignmentFlag.AlignCenter)

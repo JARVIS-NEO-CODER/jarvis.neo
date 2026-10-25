@@ -16,11 +16,11 @@ class MiniHud(QWidget):
         self.setFixedSize(285, 92)
         self.setStyleSheet("""
             QWidget#miniHud { background: transparent; }
-            QFrame#panel { background: rgba(5,12,8,235); border: 1px solid #304833; border-radius: 12px; }
-            QLabel#title { color:#baff62; font-size:11px; font-weight:700; }
-            QLabel#state { color:#58ffc4; font-size:9px; font-weight:700; }
-            QLabel#value { color:#d9f5c4; font-size:9px; }
-            QLabel#muted { color:#71806f; font-size:8px; }
+            QFrame#panel { background: rgba(13,14,19,242); border: 1px solid #38333a; border-radius: 12px; }
+            QLabel#title { color:#ff7043; font-size:11px; font-weight:700; }
+            QLabel#state { color:#70d6a3; font-size:9px; font-weight:700; }
+            QLabel#value { color:#e8eaf0; font-size:9px; }
+            QLabel#muted { color:#9296a2; font-size:8px; }
         """)
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)

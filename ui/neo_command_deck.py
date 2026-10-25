@@ -17,18 +17,18 @@ class _Metric(QFrame):
     def __init__(self, title: str, parent=None):
         super().__init__(parent)
         self.setStyleSheet(
-            "QFrame { background: rgba(0,243,255,0.055); border: 1px solid rgba(0,243,255,0.24); border-radius: 8px; }"
+            "QFrame { background: rgba(255,112,67,0.055); border: 1px solid rgba(255,112,67,0.24); border-radius: 8px; }"
             "QLabel { border: none; background: transparent; }"
         )
         layout = QVBoxLayout(self)
         layout.setContentsMargins(9, 7, 9, 7)
         layout.setSpacing(2)
         self.title = QLabel(title)
-        self.title.setStyleSheet("color:#5f91a2;font-size:8px;font-weight:700;letter-spacing:1.2px;")
+        self.title.setStyleSheet("color:#9296a2;font-size:8px;font-weight:700;letter-spacing:1.2px;")
         self.value = QLabel("--")
-        self.value.setStyleSheet("color:#dffcff;font-size:15px;font-weight:800;")
+        self.value.setStyleSheet("color:#e8eaf0;font-size:15px;font-weight:800;")
         self.detail = QLabel("")
-        self.detail.setStyleSheet("color:#4de8c1;font-size:8px;")
+        self.detail.setStyleSheet("color:#70d6a3;font-size:8px;")
         layout.addWidget(self.title)
         layout.addWidget(self.value)
         layout.addWidget(self.detail)
@@ -42,10 +42,10 @@ class NeoCommandDeck(QFrame):
         self.assistant = assistant
         self.setObjectName("neoCommandDeck")
         self.setStyleSheet(
-            "QFrame#neoCommandDeck { background: rgba(2,10,17,0.92); border: 1px solid rgba(0,243,255,0.34); border-radius: 12px; }"
+            "QFrame#neoCommandDeck { background: rgba(13,14,19,0.94); border: 1px solid rgba(255,112,67,0.34); border-radius: 12px; }"
             "QLabel { border: none; background: transparent; }"
-            "QPushButton { background: rgba(0,243,255,0.055); color:#bfefff; border:1px solid rgba(0,243,255,0.25); border-radius:6px; padding:6px 8px; font-size:8px; font-weight:800; }"
-            "QPushButton:hover { background: rgba(0,243,255,0.14); border-color:#00f3ff; }"
+            "QPushButton { background: rgba(255,112,67,0.055); color:#f5c8bb; border:1px solid rgba(255,112,67,0.25); border-radius:6px; padding:6px 8px; font-size:8px; font-weight:800; }"
+            "QPushButton:hover { background: rgba(255,112,67,0.14); border-color:#ff8a65; }"
         )
         self._build()
         self._timer = QTimer(self)
@@ -69,11 +69,11 @@ class NeoCommandDeck(QFrame):
 
         head = QHBoxLayout()
         title = QLabel("◈ NEO COMMAND DECK")
-        title.setStyleSheet("color:#00f3ff;font-size:11px;font-weight:900;letter-spacing:1.8px;")
+        title.setStyleSheet("color:#ff8a65;font-size:11px;font-weight:900;letter-spacing:1.8px;")
         self.state = QLabel("● ONLINE")
-        self.state.setStyleSheet("color:#00ffaa;font-size:8px;font-weight:800;letter-spacing:1px;")
+        self.state.setStyleSheet("color:#70d6a3;font-size:8px;font-weight:800;letter-spacing:1px;")
         self.clock = QLabel("--:--:--")
-        self.clock.setStyleSheet("color:#77a8b7;font-size:9px;font-family:Consolas;")
+        self.clock.setStyleSheet("color:#9296a2;font-size:9px;font-family:Consolas;")
         head.addWidget(title)
         head.addSpacing(8)
         head.addWidget(self.state)
@@ -82,7 +82,7 @@ class NeoCommandDeck(QFrame):
         root.addLayout(head)
 
         self.activity = QLabel("SYSTEM READY · awaiting activity")
-        self.activity.setStyleSheet("color:#86cfe0;font-size:8px;font-family:Consolas;")
+        self.activity.setStyleSheet("color:#c4c7d0;font-size:8px;font-family:Consolas;")
         self.activity.setMaximumHeight(24)
         root.addWidget(self.activity)
 

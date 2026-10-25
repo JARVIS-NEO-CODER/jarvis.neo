@@ -18,9 +18,9 @@ class SystemPanel(QWidget):
 
         for row, name in enumerate(("CPU", "RAM", "GPU", "TEMP", "NET", "AI")):
             key = QLabel(name)
-            key.setStyleSheet("color:#778b7b;font-weight:700;font-size:10px;")
+            key.setStyleSheet("color:#9296a2;font-weight:700;font-size:10px;")
             value = QLabel("--")
-            value.setStyleSheet("color:#d9f5c4;font-size:11px;")
+            value.setStyleSheet("color:#e8eaf0;font-size:11px;")
             layout.addWidget(key, row, 0)
             layout.addWidget(value, row, 1)
             self._values[name] = value

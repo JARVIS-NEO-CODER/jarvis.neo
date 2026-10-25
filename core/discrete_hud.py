@@ -39,14 +39,14 @@ class DiscreteHud(QWidget):
         self.status = QLabel("NEO • ONLINE")
         self.status.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.status.setStyleSheet(
-            "QLabel { color:#baff62; background:rgba(3,9,6,180); "
-            "border:1px solid rgba(130,190,90,90); border-radius:6px; "
+            "QLabel { color:#ff8a65; background:rgba(13,14,19,220); "
+            "border:1px solid rgba(255,112,67,90); border-radius:6px; "
             "padding:2px 5px; font:700 8px 'Segoe UI'; }"
         )
         self.telemetry = QLabel("CPU --%  •  RAM --%")
         self.telemetry.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.telemetry.setStyleSheet(
-            "QLabel { color:#8da38d; background:rgba(3,9,6,150); "
+            "QLabel { color:#9296a2; background:rgba(13,14,19,200); "
             "border-radius:5px; padding:1px; font:7px 'Segoe UI'; }"
         )
 
