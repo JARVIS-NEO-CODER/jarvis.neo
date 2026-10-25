@@ -357,8 +357,8 @@ DEFAULT_CONFIG = {
     "language": "fr-FR",
     "hotword": "jarvis",
     "use_whisper": False,
-    "theme_accent": "#00f3ff",
-    "theme_secondary": "#00ffaa",
+    "theme_accent": "#ff7043",
+    "theme_secondary": "#ffb199",
     # Privacy first: capture devices and remote control are opt-in.
     "camera_enabled": False,
     "microphone_enabled": True,
@@ -550,8 +550,8 @@ class GlobalState:
         self.current_model_tier = CONFIG.get("model_tier", "moyen")
         self.current_model = get_active_model()
         self.audio_level = 0.0
-        self.theme_color = QColor(CONFIG.get("theme_accent", "#00f3ff"))
-        self.secondary_color = QColor(CONFIG.get("theme_secondary", "#00ffaa"))
+        self.theme_color = QColor(CONFIG.get("theme_accent", "#ff7043"))
+        self.secondary_color = QColor(CONFIG.get("theme_secondary", "#ffb199"))
         self.started_at = time.time()
 
 state = GlobalState()
@@ -1037,17 +1037,17 @@ class DynamicSpaceWidget(QFrame):
         self.setMinimumHeight(190)
         self.setMaximumHeight(430)
         self.setStyleSheet("""
-            QFrame#DynamicSpace { background: rgba(0, 243, 255, 0.045); border: 1px solid rgba(0,243,255,0.30); border-radius: 12px; }
+            QFrame#DynamicSpace { background: rgba(255, 112, 67, 0.045); border: 1px solid rgba(255,112,67,0.30); border-radius: 12px; }
             QLabel { background: transparent; border: none; }
             QScrollArea { background: transparent; border: none; }
-            QTextEdit { background: rgba(2,8,22,0.70); color: #dffaff; border: 1px solid rgba(0,243,255,0.18); border-radius: 10px; padding: 8px; }
+            QTextEdit { background: rgba(9,10,14,0.78); color: #e8eaf0; border: 1px solid rgba(255,112,67,0.18); border-radius: 10px; padding: 8px; }
         """)
         root = QVBoxLayout(self)
         root.setContentsMargins(10, 8, 10, 8)
         root.setSpacing(6)
 
         self.header = QLabel("◈ DYNAMIC SPACE  ·  CONTENU CONTEXTUEL")
-        self.header.setStyleSheet("color:#00f3ff; font-weight:bold; letter-spacing:1px;")
+        self.header.setStyleSheet("color:#ff7043; font-weight:bold; letter-spacing:1px;")
         root.addWidget(self.header)
 
         self.scroll = QScrollArea()
@@ -1074,12 +1074,12 @@ class DynamicSpaceWidget(QFrame):
 
     def _card(self, title, widget):
         frame = QFrame()
-        frame.setStyleSheet("QFrame { background: rgba(5,16,38,0.88); border: 1px solid rgba(0,243,255,0.16); border-radius: 10px; }")
+        frame.setStyleSheet("QFrame { background: rgba(17,18,24,0.94); border: 1px solid rgba(255,112,67,0.16); border-radius: 10px; }")
         layout = QVBoxLayout(frame)
         layout.setContentsMargins(10, 8, 10, 8)
         if title:
             label = QLabel(title)
-            label.setStyleSheet("color:#00ffaa; font-weight:bold;")
+            label.setStyleSheet("color:#ffb199; font-weight:bold;")
             layout.addWidget(label)
         layout.addWidget(widget)
         self.body_layout.insertWidget(max(0, self.body_layout.count() - 1), frame)
