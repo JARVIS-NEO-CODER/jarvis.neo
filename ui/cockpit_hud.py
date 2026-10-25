@@ -24,7 +24,9 @@ QPushButton {{ color:{CYAN}; background:rgba(255,112,67,7); border:1px solid rgb
 QPushButton:hover {{ background:rgba(255,112,67,18); border-color:{CYAN}; }}
 QPushButton:pressed {{ background:rgba(255,112,67,30); }}
 QPushButton:checked {{ background:rgba(255,112,67,24); border-color:{CYAN}; }}
-QScrollArea {{ background:transparent; border:none; }}"""
+QScrollArea {{ background:transparent; border:none; }}
+QLineEdit {{ color:{WHITE}; background:rgba(17,18,24,242); border:1px solid rgba(255,112,67,70); border-radius:8px; padding:10px 12px; font-size:10px; }}
+QLineEdit:focus {{ border-color:{CYAN}; }}"""
 
 
 class Reactor(QWidget):
