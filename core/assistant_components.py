@@ -514,11 +514,11 @@ class NtfySettingsWidget(QWidget):
         super().__init__(parent); layout=QVBoxLayout(self); layout.addWidget(QLabel(str(globals().get("NTFY_URL","ntfy.sh")))); btn=QPushButton("Copier"); btn.clicked.connect(lambda:pyperclip.copy(globals().get("NTFY_URL",""))); layout.addWidget(btn)
 
 class HolographicFrame(QFrame):
-    def __init__(self,parent=None): super().__init__(parent); self.setStyleSheet("QFrame { background: #020617; border: 1px solid #00f3ff; border-radius: 14px; }")
+    def __init__(self,parent=None): super().__init__(parent); self.setStyleSheet("QFrame { background: #111218; border: 1px solid #ff7043; border-radius: 14px; }")
 
 class GlowButton(QPushButton):
-    def __init__(self,text,color=None,parent=None): super().__init__(text,parent); self._color=color or QColor(0,243,255); self._apply_style()
-    def _apply_style(self): self.setStyleSheet(f"QPushButton {{ color:{self._color.name()}; background:#08132b; border:1px solid {self._color.name()}; border-radius:7px; padding:7px; font-weight:bold; }} QPushButton:hover {{ background:#10244a; }}")
+    def __init__(self,text,color=None,parent=None): super().__init__(text,parent); self._color=color or QColor(255,112,67); self._apply_style()
+    def _apply_style(self): self.setStyleSheet(f"QPushButton {{ color:{self._color.name()}; background:#15161c; border:1px solid {self._color.name()}; border-radius:10px; padding:8px 12px; font-weight:700; }} QPushButton:hover {{ background:#2a1b19; }}")
 
 class TechProgressBar(QProgressBar):
     def __init__(self,color=None,parent=None): super().__init__(parent); self.setTextVisible(False); self.setMaximum(100); self.setFixedHeight(7)
@@ -567,13 +567,13 @@ class JarvisWindow(QMainWindow):
         left.addWidget(tagline)
 
         self.status_label = QLabel("●  SYSTÈME PRÊT")
-        self.status_label.setStyleSheet("color:#d7a36a; font-size:11px; font-weight:600; padding:8px 0;")
+        self.status_label.setStyleSheet("color:#ff8a65; font-size:11px; font-weight:700; padding:8px 0;")
         left.addWidget(self.status_label)
 
         self.privacy_panel = PrivacyActivityPanel()
         self.privacy_panel.setStyleSheet(
             "QFrame { background:#11141b; border:1px solid #252a33; border-radius:9px; } "
-            "QLabel { color:#8d96a5; font-size:10px; padding:5px; }"
+            "QLabel { color:#b9bdc7; font-size:10px; padding:7px; }"
         )
         left.addWidget(self.privacy_panel)
 
@@ -581,14 +581,14 @@ class JarvisWindow(QMainWindow):
         reactor.setFixedSize(190, 110)
         reactor.setStyleSheet(
             "QFrame { background:#101219; border:1px solid #30303a; border-radius:14px; } "
-            "QLabel { color:#d7a36a; font-size:12px; font-weight:600; letter-spacing:1px; }"
+            "QLabel { color:#ff8a65; font-size:12px; font-weight:700; letter-spacing:1px; }"
         )
         left.addWidget(reactor, 0, Qt.AlignmentFlag.AlignHCenter)
 
         self.audio_bar = AudioLevelBar()
         self.audio_bar.setStyleSheet(
             "QProgressBar { background:#1a1e26; border:0; border-radius:3px; max-height:5px; } "
-            "QProgressBar::chunk { background:#d7a36a; border-radius:3px; }"
+            "QProgressBar::chunk { background:#ff7043; border-radius:3px; }"
         )
         left.addWidget(self.audio_bar)
 
@@ -649,12 +649,12 @@ class JarvisWindow(QMainWindow):
                 border-radius:8px; padding:10px 12px; font-size:11px;
                 text-align:center;
             }
-            QPushButton:hover { background:#20242d; border-color:#8c6b49; }
+            QPushButton:hover { background:#2a1b19; border-color:#ff8a65; }
             QLineEdit {
                 background:#101219; color:#f0f2f5; border:1px solid #303541;
                 border-radius:9px; padding:10px 12px; font-size:12px;
             }
-            QLineEdit:focus { border-color:#b88756; }
+            QLineEdit:focus { border-color:#ff7043; }
             QMenu { background:#151820; color:#e4e7ed; border:1px solid #303541; padding:5px; }
             QMenu::item { padding:8px 24px; border-radius:5px; }
             QMenu::item:selected { background:#292d36; }
