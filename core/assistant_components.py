@@ -550,39 +550,41 @@ class JarvisWindow(QMainWindow):
         )
         self.setCentralWidget(central)
         root = QHBoxLayout(central)
-        root.setContentsMargins(22, 20, 22, 20)
-        root.setSpacing(22)
+        root.setContentsMargins(28, 24, 28, 24)
+        root.setSpacing(26)
 
         left = QVBoxLayout()
-        left.setSpacing(14)
+        left.setContentsMargins(0, 4, 8, 4)
+        left.setSpacing(16)
         root.addLayout(left, 1)
         right = QVBoxLayout()
-        right.setSpacing(12)
+        right.setContentsMargins(8, 4, 0, 4)
+        right.setSpacing(14)
         root.addLayout(right, 2)
 
         brand = QLabel("BLACK HALO")
-        brand.setStyleSheet("color:#f2f3f5; font-size:19px; font-weight:700; letter-spacing:2px;")
+        brand.setStyleSheet("color:#f4f5f7; font-size:23px; font-weight:800; letter-spacing:3px; padding:2px 0;")
         tagline = QLabel("ASSISTANT PERSONNEL")
-        tagline.setStyleSheet("color:#7d8491; font-size:9px; letter-spacing:2px;")
+        tagline.setStyleSheet("color:#858b98; font-size:10px; letter-spacing:2px; padding-bottom:8px;")
         left.addWidget(brand)
         left.addWidget(tagline)
 
         self.status_label = QLabel("●  SYSTÈME PRÊT")
-        self.status_label.setStyleSheet("color:#ff8a65; font-size:11px; font-weight:700; padding:8px 0;")
+        self.status_label.setStyleSheet("color:#ff956f; font-size:11px; font-weight:700; padding:8px 0;")
         left.addWidget(self.status_label)
 
         self.privacy_panel = PrivacyActivityPanel()
         self.privacy_panel.setStyleSheet(
-            "QFrame { background:#11141b; border:1px solid #252a33; border-radius:9px; } "
-            "QLabel { color:#b9bdc7; font-size:10px; padding:7px; }"
+            "QFrame { background:#11141b; border:1px solid #292d37; border-radius:12px; } "
+            "QLabel { color:#c0c4ce; font-size:10px; padding:8px; }"
         )
         left.addWidget(self.privacy_panel)
 
         reactor = ArcReactor()
         reactor.setFixedSize(190, 110)
         reactor.setStyleSheet(
-            "QFrame { background:#101219; border:1px solid #30303a; border-radius:14px; } "
-            "QLabel { color:#ff8a65; font-size:12px; font-weight:700; letter-spacing:1px; }"
+            "QFrame { background:#12141b; border:1px solid #38313a; border-radius:18px; } "
+            "QLabel { color:#ff956f; font-size:12px; font-weight:700; letter-spacing:1px; }"
         )
         left.addWidget(reactor, 0, Qt.AlignmentFlag.AlignHCenter)
 
@@ -617,8 +619,9 @@ class JarvisWindow(QMainWindow):
         self.chat_display.setReadOnly(True)
         self.chat_display.setPlaceholderText("Les échanges avec Black Halo apparaîtront ici.")
         self.chat_display.setStyleSheet(
-            "QTextEdit { background:#101219; color:#d9dde5; border:1px solid #252a33; "
-            "border-radius:12px; padding:14px; selection-background-color:#5b4937; }"
+            "QTextEdit { background:#0e1016; color:#e1e4eb; border:1px solid #292d37; "
+            "border-radius:16px; padding:18px; selection-background-color:#5b4937; "
+            "font-family:'Segoe UI'; font-size:12px; }"
         )
         right.addWidget(self.chat_display, 1)
 
@@ -633,29 +636,31 @@ class JarvisWindow(QMainWindow):
         self.cmd_input.setPlaceholderText("Écrire à Black Halo… (Entrée pour envoyer)")
         self.cmd_input.setToolTip("Appuie sur Entrée pour envoyer le message.")
         self.cmd_input.returnPressed.connect(self.handle_input)
-        self.cmd_input.setMinimumHeight(44)
+        self.cmd_input.setMinimumHeight(50)
         row.addWidget(self.cmd_input, 1)
         right.addLayout(row)
 
         self.setStyleSheet("""
-            QMainWindow { background:#08090d; }
+            QMainWindow { background:#090a0f; }
             QLabel { font-family:'Segoe UI'; }
             QPushButton {
-                background:#171a21; color:#d9dde5; border:1px solid #303541;
-                border-radius:10px; padding:10px 12px; font-size:11px;
-                text-align:center;
+                background:#171920; color:#e2e4ea; border:1px solid #30333e;
+                border-radius:11px; padding:11px 14px; font-size:11px; font-weight:600;
             }
-            QPushButton:hover { background:#2a1b19; border-color:#ff8a65; }
+            QPushButton:hover { background:#211a1b; border-color:#e97852; color:#fff0e9; }
+            QPushButton:pressed { background:#30201e; }
             QLineEdit {
-                background:#101219; color:#f0f2f5; border:1px solid #303541;
-                border-radius:10px; padding:10px 12px; font-size:12px;
+                background:#11131a; color:#f2f3f6; border:1px solid #30333e;
+                border-radius:13px; padding:13px 15px; font-size:12px;
+                selection-background-color:#674032;
             }
-            QLineEdit:focus { border-color:#ff7043; }
-            QMenu { background:#151820; color:#e4e7ed; border:1px solid #303541; padding:5px; }
-            QMenu::item { padding:8px 24px; border-radius:5px; }
-            QMenu::item:selected { background:#292d36; }
-            QScrollBar:vertical { background:#101219; width:8px; margin:2px; }
-            QScrollBar::handle:vertical { background:#363b46; border-radius:4px; min-height:24px; }
+            QLineEdit:focus { border-color:#e97852; background:#13151c; }
+            QMenu { background:#15171e; color:#e4e7ed; border:1px solid #343641; padding:6px; }
+            QMenu::item { padding:9px 25px; border-radius:6px; }
+            QMenu::item:selected { background:#29252a; color:#ffb091; }
+            QScrollBar:vertical { background:transparent; width:9px; margin:3px; }
+            QScrollBar::handle:vertical { background:#343741; border-radius:4px; min-height:28px; }
+            QScrollBar::handle:vertical:hover { background:#55505a; }
         """)
 
         signals.log_msg.connect(self.add_chat_msg)
