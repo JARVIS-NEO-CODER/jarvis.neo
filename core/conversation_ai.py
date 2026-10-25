@@ -8,8 +8,9 @@ from typing import Any
 
 from .ai_provider_router import AIProviderRouter
 from .groq_provider import GroqProvider
+from .ai_model_catalog import normalize_groq_model
 
-DEFAULT_GROQ_MODEL = "llama-3.1-8b-instant"
+DEFAULT_GROQ_MODEL = "openai/gpt-oss-20b"
 
 CONVERSATION_STYLE = """STYLE CONVERSATIONNEL NEO :
 - Parle comme un assistant personnel présent, naturel et attentif, pas comme un formulaire.
@@ -58,7 +59,7 @@ class ConversationAI:
             except ImportError:
                 ollama_module = None
         self.ollama_module = ollama_module
-        self.config.setdefault("groq_model", DEFAULT_GROQ_MODEL)
+        self.config["groq_model"] = normalize_groq_model(self.config.get("groq_model", DEFAULT_GROQ_MODEL))
         self.config.setdefault("ollama_enabled", True)
         self.config.setdefault("ai_provider", "groq")
         self.config.setdefault("groq_fallback_to_ollama", True)
