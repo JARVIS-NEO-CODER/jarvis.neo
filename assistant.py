@@ -1204,7 +1204,7 @@ class DynamicSpaceWidget(QFrame):
         if query:
             q = QLabel(f"Recherche : {query}")
             q.setWordWrap(True)
-            q.setStyleSheet("color:#8fdcff; padding:6px;")
+            q.setStyleSheet("color:#ffb199; padding:6px;")
             self.body_layout.insertWidget(0, q)
         if kind == "image_search":
             self._add_images(items, generation)
