@@ -544,8 +544,9 @@ class JarvisWindow(QMainWindow):
         self.setMinimumSize(820, 560)
 
         central = HolographicFrame()
+        central.setObjectName("MainFrame")
         central.setStyleSheet(
-            "QFrame { background:#0b0d12; border:1px solid #252a33; border-radius:16px; }"
+            "QFrame#MainFrame { background:#0b0d12; border:1px solid #252a33; border-radius:16px; }"
         )
         self.setCentralWidget(central)
         root = QHBoxLayout(central)
