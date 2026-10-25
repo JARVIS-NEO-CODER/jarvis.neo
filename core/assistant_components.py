@@ -686,7 +686,7 @@ class JarvisWindow(QMainWindow):
         _state.camera_enabled=not _state.camera_enabled
         if _state.camera_enabled and not camera_manager.enable(): _state.camera_enabled=False
         if not _state.camera_enabled: camera_manager.disable()
-        self.btn_camera.setText("CAM ON" if _state.camera_enabled else "CAM OFF")
+        self.privacy_panel.refresh()
     def apply_size_preset(self,preset):
         sizes={"compact":(820,580),"normal":(1150,750),"large":(1450,900),"wide":(1600,720)}; self.resize(*sizes.get(preset,sizes["normal"]))
     def toggle_minimize_window(self): self.showMinimized()
