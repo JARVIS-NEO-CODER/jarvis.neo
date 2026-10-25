@@ -7,9 +7,9 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from core.ai_model_catalog import GROQ_MODELS
+from core.ai_model_catalog import GROQ_MODELS, normalize_groq_model
 
-DEFAULT_MODEL = "llama-3.1-8b-instant"
+DEFAULT_MODEL = "openai/gpt-oss-20b"
 USER_AGENT = "JARVIS-NEO/1.2"
 
 
@@ -21,7 +21,7 @@ class GroqProvider:
 
     def __init__(self, api_key=None, model=DEFAULT_MODEL, timeout=60.0):
         self.api_key = api_key or os.getenv("GROQ_API_KEY", "")
-        self.model = str(model or DEFAULT_MODEL).strip() or DEFAULT_MODEL
+        self.model = normalize_groq_model(model or DEFAULT_MODEL)
         self.timeout = max(1.0, float(timeout))
         self.last_model = self.model
         self.last_error_code = None
