@@ -18,15 +18,15 @@ CYAN, WHITE, GREEN, RED, BG = "#ff8a65", "#e8eaf0", "#70d6a3", "#ff6f78", "#090a
 
 
 def panel_style() -> str:
-    return f"""QFrame.cockpitPanel {{ background:rgba(17,18,24,242); border:1px solid rgba(255,112,67,52); border-radius:14px; }}
-QLabel {{ color:{WHITE}; background:transparent; border:none; }}
-QPushButton {{ color:{CYAN}; background:rgba(255,112,67,7); border:1px solid rgba(255,112,67,48); border-radius:7px; padding:7px 8px; font-size:8px; font-weight:800; }}
-QPushButton:hover {{ background:rgba(255,112,67,18); border-color:{CYAN}; }}
-QPushButton:pressed {{ background:rgba(255,112,67,30); }}
-QPushButton:checked {{ background:rgba(255,112,67,24); border-color:{CYAN}; }}
+    return f"""QFrame.cockpitPanel {{ background:#11131a; border:1px solid #292c36; border-radius:16px; }}
+QLabel {{ color:{WHITE}; background:transparent; border:none; font-family:'Segoe UI'; }}
+QPushButton {{ color:#e8eaf0; background:#191b23; border:1px solid #30333e; border-radius:9px; padding:10px 11px; font-size:10px; font-weight:600; }}
+QPushButton:hover {{ background:#242027; border-color:#e97852; color:#ffb091; }}
+QPushButton:pressed {{ background:#30201e; }}
+QPushButton:checked {{ background:#292027; border-color:#e97852; color:#ffb091; }}
 QScrollArea {{ background:transparent; border:none; }}
-QLineEdit {{ color:{WHITE}; background:rgba(17,18,24,242); border:1px solid rgba(255,112,67,70); border-radius:8px; padding:10px 12px; font-size:10px; }}
-QLineEdit:focus {{ border-color:{CYAN}; }}"""
+QLineEdit {{ color:{WHITE}; background:#0e1016; border:1px solid #30333e; border-radius:12px; padding:13px 15px; font-size:12px; selection-background-color:#674032; }}
+QLineEdit:focus {{ border-color:#e97852; background:#13151c; }}"""
 
 
 class Reactor(QWidget):
@@ -70,7 +70,7 @@ class Metric(QFrame):
         super().__init__(parent); self.setObjectName("cockpitPanel"); self.setStyleSheet(panel_style())
         box=QVBoxLayout(self); box.setContentsMargins(10,8,10,8); box.setSpacing(5); row=QHBoxLayout()
         self.name=QLabel(str(name).upper()); self.name.setStyleSheet("color:#6C8794;font-size:7px;font-weight:800;letter-spacing:1.5px;")
-        self.value=QLabel("0%"); self.value.setStyleSheet(f"color:{WHITE};font-size:13px;font-weight:900;"); self.value.setAlignment(Qt.AlignmentFlag.AlignRight)
+        self.value=QLabel("0%"); self.value.setStyleSheet(f"color:{WHITE};font-size:15px;font-weight:800;"); self.value.setAlignment(Qt.AlignmentFlag.AlignRight)
         row.addWidget(self.name); row.addStretch(); row.addWidget(self.value); box.addLayout(row)
         self.bar=QProgressBar(); self.bar.setRange(0,100); self.bar.setTextVisible(False); self.bar.setFixedHeight(3); self.bar.setStyleSheet(f"QProgressBar{{background:rgba(255,255,255,10);border:0;}} QProgressBar::chunk{{background:{CYAN};}} "); box.addWidget(self.bar)
     def set_value(self,value): value=max(0,min(100,int(value))); self.value.setText(f"{value}%"); self.bar.setValue(value)
@@ -91,20 +91,20 @@ class CockpitHud(QDialog):
         self._timer=QTimer(self); self._timer.timeout.connect(self.refresh); self._timer.start(1500); self.refresh()
 
     def _panel(self,title):
-        frame=QFrame(); frame.setObjectName("cockpitPanel"); frame.setStyleSheet(panel_style()); layout=QVBoxLayout(frame); layout.setContentsMargins(12,11,12,11); layout.setSpacing(8)
-        label=QLabel(title); label.setStyleSheet("color:#6C8794;font-size:8px;font-weight:900;letter-spacing:1.8px;"); layout.addWidget(label); return frame,layout
+        frame=QFrame(); frame.setObjectName("cockpitPanel"); frame.setStyleSheet(panel_style()); layout=QVBoxLayout(frame); layout.setContentsMargins(16,15,16,15); layout.setSpacing(10)
+        label=QLabel(title); label.setStyleSheet("color:#6C8794;font-size:9px;font-weight:800;letter-spacing:1.5px;"); layout.addWidget(label); return frame,layout
 
     def _add_command_group(self, layout, title, actions):
-        label=QLabel(title); label.setStyleSheet("color:#6C8794;font-size:7px;font-weight:900;letter-spacing:1.5px;margin-top:4px;"); layout.addWidget(label)
+        label=QLabel(title); label.setStyleSheet("color:#6C8794;font-size:8px;font-weight:800;letter-spacing:1.2px;margin-top:6px;"); layout.addWidget(label)
         grid=QGridLayout(); grid.setSpacing(5)
         for i,(text,command) in enumerate(actions):
             b=QPushButton(text); b.setToolTip(command); b.clicked.connect(lambda _,c=command:self._command(c)); grid.addWidget(b,i//2,i%2)
         layout.addLayout(grid)
 
     def _build(self):
-        root=QVBoxLayout(self); root.setContentsMargins(18,15,18,15); root.setSpacing(10)
-        header=QHBoxLayout(); brand=QLabel("J.A.R.V.I.S. NEO"); brand.setStyleSheet(f"color:{CYAN};font-size:18px;font-weight:950;letter-spacing:3px;")
-        subtitle=QLabel("NEURAL COMMAND INTERFACE  //  LOCAL CORE"); subtitle.setStyleSheet("color:#456774;font-size:7px;font-weight:800;letter-spacing:1.8px;")
+        root=QVBoxLayout(self); root.setContentsMargins(22,20,22,20); root.setSpacing(14)
+        header=QHBoxLayout(); brand=QLabel("J.A.R.V.I.S. NEO"); brand.setStyleSheet(f"color:{CYAN};font-size:21px;font-weight:800;letter-spacing:2.5px;")
+        subtitle=QLabel("NEURAL COMMAND INTERFACE  //  LOCAL CORE"); subtitle.setStyleSheet("color:#456774;font-size:9px;font-weight:600;letter-spacing:1.2px;")
         self.status=QLabel("● ONLINE"); self.status.setStyleSheet(f"color:{GREEN};font-size:9px;font-weight:900;"); self.mode=QLabel("NORMAL"); self.mode.setStyleSheet("color:#7A98A4;font-size:8px;font-weight:800;")
         close=QPushButton("×"); close.setFixedSize(32,28); close.clicked.connect(self._minimize_to_reactor)
         header.addWidget(brand); header.addSpacing(12); header.addWidget(subtitle); header.addStretch(); header.addWidget(self.status); header.addSpacing(10); header.addWidget(self.mode); header.addSpacing(8); header.addWidget(close); root.addLayout(header)
