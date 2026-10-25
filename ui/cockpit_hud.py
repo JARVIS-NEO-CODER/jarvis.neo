@@ -6,7 +6,7 @@ from typing import Any
 
 from PyQt6.QtCore import QPointF, QTimer, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QPainter, QPen
-from PyQt6.QtWidgets import QDialog, QFrame, QGridLayout, QHBoxLayout, QLabel, QProgressBar, QPushButton, QScrollArea, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QDialog, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QProgressBar, QPushButton, QScrollArea, QVBoxLayout, QWidget
 from core.cockpit_widget_engine import CockpitWidgetEngine
 
 try:
@@ -117,16 +117,22 @@ class CockpitHud(QDialog):
         center,cl=self._panel("DYNAMIC INTELLIGENCE"); self.dynamic_host=QWidget(); self.dynamic_host.setStyleSheet("background:transparent;border:none;"); scroll=QScrollArea(); scroll.setWidgetResizable(True); scroll.setWidget(self.dynamic_host); cl.addWidget(scroll,1); self.dynamic_engine=CockpitWidgetEngine(self.dynamic_host); body.addWidget(center,3); self._body_widgets.append(center)
 
         right,rl=self._panel("COMMAND DECK"); command_scroll=QScrollArea(); command_scroll.setWidgetResizable(True); command_host=QWidget(); command_layout=QVBoxLayout(command_host); command_layout.setContentsMargins(0,0,0,0); command_layout.setSpacing(5)
-        self._add_command_group(command_layout,"JARVIS CORE",[("NEW TASK","nouvelle tâche"),("AGENT","lance une mission autonome"),("SENTINEL","active le mode Sentinel"),("MEMORY","ouvre ma mémoire"),("HISTORY","affiche l'historique"),("PLUGINS","liste les plugins"),("DIAGNOSTIC","diagnostic complet"),("SETTINGS","ouvre les paramètres")])
-        self._add_command_group(command_layout,"SYSTEM",[("APPS","ouvre les applications"),("FILES","ouvre explorateur"),("DESKTOP","affiche le bureau"),("TASKS","gestionnaire des tâches"),("TERMINAL","ouvre le terminal"),("WINDOWS","ouvre les paramètres Windows"),("LOCK","verrouille le PC"),("RESTART","redémarre le PC")])
-        self._add_command_group(command_layout,"WEB & MEDIA",[("WEB","recherche sur le web"),("IMAGES","recherche des images"),("YOUTUBE","ouvre YouTube"),("NEWS","cherche les actualités"),("WEATHER","météo"),("DOWNLOADS","ouvre les téléchargements"),("TRANSLATE","traduis"),("SEARCH","recherche")])
-        self._add_command_group(command_layout,"DEVELOPMENT",[("VS CODE","ouvre VS Code"),("GITHUB","ouvre GitHub"),("PYTHON","ouvre Python"),("GIT","affiche le statut git"),("TESTS","lance les tests"),("BUILD","lance le build"),("PROJECTS","ouvre mes projets"),("LOGS","affiche les logs")])
-        self._add_command_group(command_layout,"MONITORING",[("CPU","état du processeur"),("RAM","état de la mémoire"),("DISK","état du disque"),("NETWORK","état du réseau"),("PROCESSES","liste les processus"),("BATTERY","état de la batterie"),("REFRESH","actualise le système"),("HELP","aide")]); command_layout.addStretch(); command_scroll.setWidget(command_host); rl.addWidget(command_scroll,1)
+        self._add_command_group(command_layout,"ACCÈS RAPIDES",[("AGENT","lance une mission autonome"),("SENTINEL","active le mode Sentinel"),("MEMORY","ouvre ma mémoire"),("HISTORY","affiche l'historique"),("FILES","ouvre explorateur")])
+        command_layout.addWidget(QLabel("Les autres commandes se saisissent ci-dessous."))
+        command_layout.addStretch(); command_scroll.setWidget(command_host); rl.addWidget(command_scroll,1)
         feed=QLabel("LIVE FEED"); feed.setStyleSheet("color:#6C8794;font-size:8px;font-weight:900;letter-spacing:1.8px;margin-top:6px;"); rl.addWidget(feed); self.activity_label=QLabel("› Core initialized\n› Cockpit ready\n› Waiting for directive"); self.activity_label.setStyleSheet("color:#89A9B5;font-family:Consolas;font-size:8px;"); self.activity_label.setWordWrap(True); rl.addWidget(self.activity_label); body.addWidget(right,2); self._body_widgets.append(right); root.addLayout(body,1)
 
+        command_row=QHBoxLayout(); command_row.setSpacing(8)
+        self.command_input=QLineEdit()
+        self.command_input.setPlaceholderText("Écrire une commande à Black Halo… (Entrée pour envoyer)")
+        self.command_input.setMinimumHeight(42)
+        self.command_input.setToolTip("Saisis une commande ou une demande, puis appuie sur Entrée.")
+        self.command_input.returnPressed.connect(self._submit_command)
+        command_row.addWidget(self.command_input,1); root.addLayout(command_row)
+
         footer=QHBoxLayout(); self._footer_widgets=[]
-        for text,slot in (("COMPACT",self._compact),("NORMAL",self._normal),("CLEAR",self.clear_dynamic_panels),("REFRESH",self.refresh)):
-            b=QPushButton(text); b.clicked.connect(slot); footer.addWidget(b); self._footer_widgets.append(b)
+        compact=QPushButton("COMPACT / NORMAL"); compact.setToolTip("Basculer entre la fenêtre compacte et la taille normale")
+        compact.clicked.connect(self._toggle_size); footer.addWidget(compact); self._footer_widgets.append(compact)
         footer.addStretch(); self.pin=QPushButton("PIN"); self.pin.setCheckable(True); self.pin.setChecked(True); self.pin.clicked.connect(self._toggle_pin); footer.addWidget(self.pin); self._footer_widgets.append(self.pin); root.addLayout(footer)
         self.mini_reactor=Reactor(self); self.mini_reactor.setMinimumSize(0,0); self.mini_reactor.setFixedSize(190,190); self.mini_reactor.clicked.connect(self._restore_from_reactor); self.mini_reactor.hide()
 
@@ -136,6 +142,18 @@ class CockpitHud(QDialog):
             if queue is None: raise RuntimeError("file de commandes indisponible")
             queue.put(str(command)); self._on_log("COMMAND",str(command))
         except Exception as exc: self._on_log("ERROR",str(exc))
+
+    def _submit_command(self):
+        command=self.command_input.text().strip()
+        if command:
+            self._command(command)
+            self.command_input.clear()
+
+    def _toggle_size(self):
+        if self.width() <= 920:
+            self._normal()
+        else:
+            self._compact()
 
     def _minimize_to_reactor(self):
         if self._mini_mode:return
