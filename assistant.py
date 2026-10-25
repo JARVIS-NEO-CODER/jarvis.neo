@@ -668,21 +668,21 @@ if FASTAPI_OK:
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <style>
             :root {
-                --bg-main: #020617;
-                --bg-panel: #080e21;
-                --accent: #00f3ff;
-                --accent-glow: rgba(0, 243, 255, 0.35);
-                --text-main: #e2f8ff;
-                --border: rgba(0, 243, 255, 0.25);
+                --bg-main: #090a0e;
+                --bg-panel: #111218;
+                --accent: #ff7043;
+                --accent-glow: rgba(255, 112, 67, 0.28);
+                --text-main: #e8eaf0;
+                --border: rgba(255, 112, 67, 0.25);
             }
             body { background: var(--bg-main); color: var(--text-main); font-family: 'Segoe UI', system-ui, sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
             header { padding: 12px 20px; border-bottom: 1px solid var(--border); background: var(--bg-panel); display: flex; justify-content: space-between; align-items: center; box-shadow: 0 0 25px var(--accent-glow); }
             header h1 { margin: 0; font-size: 18px; letter-spacing: 3px; color: var(--accent); text-shadow: 0 0 12px var(--accent-glow); }
-            .status-badge { font-size: 11px; padding: 4px 12px; border: 1px solid var(--accent); border-radius: 12px; background: rgba(0,243,255,0.1); }
+            .status-badge { font-size: 11px; padding: 4px 12px; border: 1px solid var(--accent); border-radius: 12px; background: rgba(255,112,67,0.10); }
             .container { display: flex; flex: 1; overflow: hidden; }
-            .sidebar { width: 340px; border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 15px; background: #040817; gap: 15px; overflow-y: auto; }
-            .main-content { flex: 1; display: flex; flex-direction: column; padding: 15px; background: radial-gradient(circle at center, #06112d 0%, #020617 100%); }
-            .card { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px; box-shadow: inset 0 0 15px rgba(0,243,255,0.03); }
+            .sidebar { width: 340px; border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 15px; background: #0d0e13; gap: 15px; overflow-y: auto; }
+            .main-content { flex: 1; display: flex; flex-direction: column; padding: 15px; background: radial-gradient(circle at top right, #1a1413 0%, #090a0e 58%, #07080b 100%); }
+            .card { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px; box-shadow: inset 0 0 15px rgba(255,112,67,0.03); }
             .card h3 { margin: 0 0 10px 0; font-size: 13px; color: var(--accent); text-transform: uppercase; letter-spacing: 1px; }
             .alarm-banner { display: none; background: rgba(255, 50, 50, 0.2); border: 2px solid #ff3333; color: #ff6666; padding: 12px; border-radius: 8px; text-align: center; font-weight: bold; animation: pulse 1s infinite; margin-bottom: 15px; }
             @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
@@ -690,11 +690,11 @@ if FASTAPI_OK:
             .cam-container img { width: 100%; height: 100%; object-fit: cover; }
             .stat-bar { margin-bottom: 8px; font-size: 12px; }
             .progress-bg { background: rgba(255,255,255,0.05); height: 6px; border-radius: 3px; overflow: hidden; margin-top: 4px; border: 1px solid var(--border); }
-            .progress-fill { background: linear-gradient(90deg, var(--accent), #00ffaa); height: 100%; width: 0%; transition: width 0.5s ease; }
-            #chat { flex: 1; overflow-y: auto; background: rgba(2, 6, 23, 0.6); border: 1px solid var(--border); border-radius: 10px; padding: 15px; margin-bottom: 12px; display: flex; flex-direction: column; gap: 10px; min-height: 200px; }
+            .progress-fill { background: linear-gradient(90deg, var(--accent), #ffb199); height: 100%; width: 0%; transition: width 0.5s ease; }
+            #chat { flex: 1; overflow-y: auto; background: rgba(9, 10, 14, 0.72); border: 1px solid var(--border); border-radius: 10px; padding: 15px; margin-bottom: 12px; display: flex; flex-direction: column; gap: 10px; min-height: 200px; }
             .msg { padding: 10px 14px; border-radius: 8px; max-width: 80%; font-size: 13px; line-height: 1.4; word-break: break-word; }
-            .user { align-self: flex-end; background: rgba(0, 243, 255, 0.15); border: 1px solid var(--accent); color: white; border-bottom-right-radius: 2px; }
-            .jarvis { align-self: flex-start; background: #0c1836; border: 1px solid var(--border); color: var(--accent); border-bottom-left-radius: 2px; }
+            .user { align-self: flex-end; background: rgba(255, 112, 67, 0.14); border: 1px solid var(--accent); color: white; border-bottom-right-radius: 2px; }
+            .jarvis { align-self: flex-start; background: #171820; border: 1px solid var(--border); color: var(--accent); border-bottom-left-radius: 2px; }
             .input-area { display: flex; gap: 10px; }
             input { flex: 1; background: var(--bg-panel); border: 1px solid var(--border); color: white; padding: 12px 15px; border-radius: 8px; outline: none; font-size: 14px; }
             input:focus { border-color: var(--accent); box-shadow: 0 0 10px var(--accent-glow); }
@@ -720,7 +720,7 @@ if FASTAPI_OK:
                 <div class="card">
                     <h3>Diagnostics Système</h3>
                     <div class="stat-bar"><span>CPU</span><span id="cpuText" style="float: right;">0%</span><div class="progress-bg"><div class="progress-fill" id="cpuBar"></div></div></div>
-                    <div class="stat-bar"><span>RAM</span><span id="ramText" style="float: right;">0%</span><div class="progress-bg"><div class="progress-fill" id="ramBar" style="background: linear-gradient(90deg, #a200ff, #ff00ea);"></div></div></div>
+                    <div class="stat-bar"><span>RAM</span><span id="ramText" style="float: right;">0%</span><div class="progress-bg"><div class="progress-fill" id="ramBar" style="background: linear-gradient(90deg, #6b3527, #ff8a65);"></div></div></div>
                 </div>
             </div>
             <div class="main-content">
