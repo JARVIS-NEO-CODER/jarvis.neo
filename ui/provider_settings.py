@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 from PyQt6.QtWidgets import QCheckBox, QComboBox, QDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout
-from core.ai_model_catalog import apply_provider_settings, model_catalog
+from core.ai_model_catalog import apply_provider_settings, model_catalog, normalize_groq_model
 
 
 class ProviderSettingsDialog(QDialog):
@@ -84,7 +84,7 @@ class ProviderSettingsDialog(QDialog):
 
     def _refresh_models(self, *_):
         provider = str(self.provider.currentData() or "groq")
-        current = str(self.config.get("groq_model", "llama-3.1-8b-instant")) if provider == "groq" else str(self.config.get("model", "llama3.2:3b"))
+        current = normalize_groq_model(self.config.get("groq_model", "openai/gpt-oss-20b")) if provider == "groq" else str(self.config.get("model", "llama3.2:3b"))
         models = model_catalog(provider)
         self.model.blockSignals(True)
         self.model.clear()
