@@ -3,7 +3,7 @@ from PyQt6.QtCore import QTimer, Qt, QPointF
 from PyQt6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPen, QBrush
 from PyQt6.QtWidgets import QFrame, QGridLayout, QHBoxLayout, QLabel, QProgressBar, QPushButton, QVBoxLayout, QWidget
 
-CYAN=QColor('#ff8a65'); WHITE=QColor('#e8eaf0'); GREEN=QColor('#70d6a3'); BG=QColor('#090a0e')
+ACCENT=QColor('#ff8a65'); WHITE=QColor('#e8eaf0'); GREEN=QColor('#70d6a3'); BG=QColor('#090a0e')
 
 def panel_style():
     return """QFrame{background:rgba(17,18,24,242);border:1px solid rgba(255,112,67,45);border-radius:12px;} QLabel{color:#e8eaf0;background:transparent;border:none;font-family:'Segoe UI';} QPushButton{color:#ff8a65;background:rgba(255,112,67,10);border:1px solid rgba(255,112,67,65);border-radius:8px;padding:8px 12px;font-size:10px;font-weight:700;} QPushButton:hover{background:rgba(255,112,67,24);border-color:#ff8a65;}"""
@@ -16,10 +16,10 @@ class NeoFrame(QFrame):
     def _tick(self): self.phase=(self.phase+1)%360; self.update()
     def paintEvent(self,event):
         p=QPainter(self); p.setRenderHint(QPainter.RenderHint.Antialiasing); w,h=self.width(),self.height(); p.fillRect(self.rect(),QBrush(BG))
-        g=QLinearGradient(0,0,w,h); g.setColorAt(0,QColor(8,25,42,210)); g.setColorAt(.52,QColor(4,12,24,235)); g.setColorAt(1,QColor(2,7,15,245)); p.fillRect(self.rect(),QBrush(g))
-        p.setPen(QPen(QColor(98,246,255,150),1.4)); c=34;m=8
+        g=QLinearGradient(0,0,w,h); g.setColorAt(0,QColor(35,20,18,210)); g.setColorAt(.52,QColor(17,18,24,235)); g.setColorAt(1,QColor(9,10,14,245)); p.fillRect(self.rect(),QBrush(g))
+        p.setPen(QPen(QColor(255,112,67,150),1.4)); c=34;m=8
         for a,b,c2,d in [(m,m,c,m),(m,m,m,c),(w-m-c,m,w-m,m),(w-m,m,w-m,c),(m,h-m,m,h-m-c),(m,h-m,c,h-m),(w-m-c,h-m,w-m,h-m),(w-m,h-m,w-m,h-m-c)]: p.drawLine(a,b,c2,d)
-        y=int((self.phase/360)*max(1,h)); p.fillRect(10,y,max(0,w-20),1,QColor(98,246,255,18)); super().paintEvent(event)
+        y=int((self.phase/360)*max(1,h)); p.fillRect(10,y,max(0,w-20),1,QColor(255,112,67,18)); super().paintEvent(event)
 
 class NeoButton(QPushButton):
     def __init__(self,text,parent=None): super().__init__(text,parent); self.setMinimumHeight(36); self.setCursor(Qt.CursorShape.PointingHandCursor); self.setStyleSheet(panel_style())
@@ -35,7 +35,7 @@ class ReactorWidget(QWidget):
     def _tick(self): self.angle=(self.angle+2)%360;self.update()
     def set_status(self,status): self.status=status.upper();self.update()
     def paintEvent(self,event):
-        p=QPainter(self);p.setRenderHint(QPainter.RenderHint.Antialiasing);c=QPointF(self.width()/2,self.height()/2);r=min(self.width(),self.height())/2-12;color=CYAN if self.status=='ONLINE' else GREEN
+        p=QPainter(self);p.setRenderHint(QPainter.RenderHint.Antialiasing);c=QPointF(self.width()/2,self.height()/2);r=min(self.width(),self.height())/2-12;color=ACCENT if self.status=='ONLINE' else GREEN
         p.setPen(QPen(QColor(color.red(),color.green(),color.blue(),70),1));p.setBrush(Qt.BrushStyle.NoBrush)
         for i in range(24): p.save();p.translate(c);p.rotate(i*15);p.drawLine(0,-r,0,-r+7);p.restore()
         for rr,alpha in ((r-8,30),(r-25,55),(r-43,90)): p.setPen(QPen(QColor(color.red(),color.green(),color.blue(),alpha),1.5));p.drawEllipse(c,rr,rr)
