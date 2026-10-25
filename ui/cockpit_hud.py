@@ -98,7 +98,7 @@ class CockpitHud(QDialog):
         label=QLabel(title); label.setStyleSheet("color:#6C8794;font-size:8px;font-weight:800;letter-spacing:1.2px;margin-top:6px;"); layout.addWidget(label)
         grid=QGridLayout(); grid.setSpacing(5)
         for i,(text,command) in enumerate(actions):
-            b=QPushButton(text); b.setToolTip(command); b.clicked.connect(lambda _,c=command:self._command(c)); grid.addWidget(b,i//2,i%2)
+            b=QPushButton(text); b.setAutoDefault(False); b.setDefault(False); b.setToolTip(command); b.clicked.connect(lambda _,c=command:self._command(c)); grid.addWidget(b,i//2,i%2)
         layout.addLayout(grid)
 
     def _build(self):
@@ -106,7 +106,7 @@ class CockpitHud(QDialog):
         header=QHBoxLayout(); brand=QLabel("J.A.R.V.I.S. NEO"); brand.setStyleSheet(f"color:{CYAN};font-size:21px;font-weight:800;letter-spacing:2.5px;")
         subtitle=QLabel("NEURAL COMMAND INTERFACE  //  LOCAL CORE"); subtitle.setStyleSheet("color:#456774;font-size:9px;font-weight:600;letter-spacing:1.2px;")
         self.status=QLabel("● ONLINE"); self.status.setStyleSheet(f"color:{GREEN};font-size:9px;font-weight:900;"); self.mode=QLabel("NORMAL"); self.mode.setStyleSheet("color:#7A98A4;font-size:8px;font-weight:800;")
-        close=QPushButton("×"); close.setFixedSize(32,28); close.setToolTip("Masquer la grande fenêtre et garder le petit réacteur visible"); close.setAccessibleName("Masquer la fenêtre"); close.clicked.connect(self._minimize_to_reactor)
+        close=QPushButton("×"); close.setFixedSize(32,28); close.setAutoDefault(False); close.setDefault(False); close.setToolTip("Masquer la grande fenêtre et garder le petit réacteur visible"); close.setAccessibleName("Masquer la fenêtre"); close.clicked.connect(self._minimize_to_reactor)
         header.addWidget(brand); header.addSpacing(12); header.addWidget(subtitle); header.addStretch(); header.addWidget(self.status); header.addSpacing(10); header.addWidget(self.mode); header.addSpacing(8); header.addWidget(close); root.addLayout(header)
         line=QFrame(); line.setFixedHeight(1); line.setStyleSheet("background:rgba(255,112,67,70);border:none;"); root.addWidget(line); self._header_widgets=[brand,subtitle,self.status,self.mode,close]
 
@@ -135,9 +135,9 @@ class CockpitHud(QDialog):
         command_row.addWidget(self.command_input,1); root.addLayout(command_row)
 
         footer=QHBoxLayout(); self._footer_widgets=[]
-        compact=QPushButton("Réduire / agrandir"); compact.setToolTip("Réduire la fenêtre ou revenir à sa taille normale"); compact.setAccessibleName("Réduire ou agrandir la fenêtre")
+        compact=QPushButton("Réduire / agrandir"); compact.setAutoDefault(False); compact.setDefault(False); compact.setToolTip("Réduire la fenêtre ou revenir à sa taille normale"); compact.setAccessibleName("Réduire ou agrandir la fenêtre")
         compact.clicked.connect(self._toggle_size); footer.addWidget(compact); self._footer_widgets.append(compact)
-        footer.addStretch(); self.pin=QPushButton("Toujours visible ✓"); self.pin.setToolTip("Garder Black Halo au-dessus des autres fenêtres"); self.pin.setAccessibleName("Garder Black Halo au premier plan"); self.pin.setCheckable(True); self.pin.setChecked(True); self.pin.clicked.connect(self._toggle_pin); footer.addWidget(self.pin); self._footer_widgets.append(self.pin); root.addLayout(footer)
+        footer.addStretch(); self.pin=QPushButton("Toujours visible ✓"); self.pin.setAutoDefault(False); self.pin.setDefault(False); self.pin.setToolTip("Garder Black Halo au-dessus des autres fenêtres"); self.pin.setAccessibleName("Garder Black Halo au premier plan"); self.pin.setCheckable(True); self.pin.setChecked(True); self.pin.clicked.connect(self._toggle_pin); footer.addWidget(self.pin); self._footer_widgets.append(self.pin); root.addLayout(footer)
         self.mini_reactor=Reactor(self); self.mini_reactor.setMinimumSize(0,0); self.mini_reactor.setFixedSize(190,190); self.mini_reactor.clicked.connect(self._restore_from_reactor); self.mini_reactor.hide()
 
     def _command(self,command):
