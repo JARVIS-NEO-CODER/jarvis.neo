@@ -17,16 +17,16 @@ class ProviderSettingsDialog(QDialog):
         self.setMinimumWidth(560)
         self.setStyleSheet(
             "QDialog{background:#090a0e;color:#e8eaf0} QLabel{color:#b9bdc7} "
-            "QLineEdit,QComboBox{background:#111218;color:#fff;border:1px solid #38333a;padding:8px;border-radius:6px;min-height:20px} "
+            "QLineEdit,QComboBox{background:#111218;color:#fff;border:1px solid #38333a;padding:8px;border-radius:10px;min-height:24px} "
             "QComboBox::drop-down{width:30px;border-left:1px solid #38333a} "
-            "QPushButton{background:#15161c;color:#f5c8bb;border:1px solid #38333a;padding:9px;border-radius:6px} "
+            "QPushButton{background:#15161c;color:#f5c8bb;border:1px solid #38333a;padding:9px 12px;border-radius:10px} "
             "QCheckBox{color:#b9bdc7}"
         )
         self.path = Path.home() / ".jarvis_neo" / "jarvis_config.json"
         self.config = self._load()
         root = QVBoxLayout(self)
         title = QLabel("⚡ CERVEAU IA • FOURNISSEUR & MODÈLE")
-        title.setStyleSheet("font-weight:bold;color:#f5c8bb;font-size:15px")
+        title.setStyleSheet("font-weight:800;color:#ff8a65;font-size:15px")
         root.addWidget(title)
         root.addWidget(QLabel("Le menu ci-dessous est la liste réelle des modèles que J.A.R.V.I.S. peut sélectionner."))
 
