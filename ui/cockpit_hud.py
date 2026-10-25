@@ -106,7 +106,7 @@ class CockpitHud(QDialog):
         header=QHBoxLayout(); brand=QLabel("J.A.R.V.I.S. NEO"); brand.setStyleSheet(f"color:{CYAN};font-size:21px;font-weight:800;letter-spacing:2.5px;")
         subtitle=QLabel("NEURAL COMMAND INTERFACE  //  LOCAL CORE"); subtitle.setStyleSheet("color:#456774;font-size:9px;font-weight:600;letter-spacing:1.2px;")
         self.status=QLabel("● ONLINE"); self.status.setStyleSheet(f"color:{GREEN};font-size:9px;font-weight:900;"); self.mode=QLabel("NORMAL"); self.mode.setStyleSheet("color:#7A98A4;font-size:8px;font-weight:800;")
-        close=QPushButton("×"); close.setFixedSize(32,28); close.clicked.connect(self._minimize_to_reactor)
+        close=QPushButton("×"); close.setFixedSize(32,28); close.setToolTip("Masquer la grande fenêtre et garder le petit réacteur visible"); close.setAccessibleName("Masquer la fenêtre"); close.clicked.connect(self._minimize_to_reactor)
         header.addWidget(brand); header.addSpacing(12); header.addWidget(subtitle); header.addStretch(); header.addWidget(self.status); header.addSpacing(10); header.addWidget(self.mode); header.addSpacing(8); header.addWidget(close); root.addLayout(header)
         line=QFrame(); line.setFixedHeight(1); line.setStyleSheet("background:rgba(255,112,67,70);border:none;"); root.addWidget(line); self._header_widgets=[brand,subtitle,self.status,self.mode,close]
 
@@ -119,8 +119,10 @@ class CockpitHud(QDialog):
         center,cl=self._panel("DYNAMIC INTELLIGENCE"); self.dynamic_host=QWidget(); self.dynamic_host.setStyleSheet("background:transparent;border:none;"); scroll=QScrollArea(); scroll.setWidgetResizable(True); scroll.setWidget(self.dynamic_host); cl.addWidget(scroll,1); self.dynamic_engine=CockpitWidgetEngine(self.dynamic_host); body.addWidget(center,3); self._body_widgets.append(center)
 
         right,rl=self._panel("COMMAND DECK"); command_scroll=QScrollArea(); command_scroll.setWidgetResizable(True); command_host=QWidget(); command_layout=QVBoxLayout(command_host); command_layout.setContentsMargins(0,0,0,0); command_layout.setSpacing(5)
-        self._add_command_group(command_layout,"ACCÈS RAPIDES",[("AGENT","lance une mission autonome"),("SENTINEL","active le mode Sentinel"),("MEMORY","ouvre ma mémoire"),("HISTORY","affiche l'historique"),("FILES","ouvre explorateur")])
-        command_layout.addWidget(QLabel("Les autres commandes se saisissent ci-dessous."))
+        command_hint=QLabel("Décris simplement ce que tu veux faire dans le champ en bas.\nExemples : « ouvre mes fichiers », « résume ce dossier », « aide-moi à organiser ma journée ».") 
+        command_hint.setWordWrap(True)
+        command_hint.setStyleSheet("color:#aeb3bf;font-size:12px;line-height:1.4;padding:8px 2px;")
+        command_layout.addWidget(command_hint)
         command_layout.addStretch(); command_scroll.setWidget(command_host); rl.addWidget(command_scroll,1)
         feed=QLabel("LIVE FEED"); feed.setStyleSheet("color:#6C8794;font-size:8px;font-weight:900;letter-spacing:1.8px;margin-top:6px;"); rl.addWidget(feed); self.activity_label=QLabel("› Core initialized\n› Cockpit ready\n› Waiting for directive"); self.activity_label.setStyleSheet("color:#89A9B5;font-family:Consolas;font-size:8px;"); self.activity_label.setWordWrap(True); rl.addWidget(self.activity_label); body.addWidget(right,2); self._body_widgets.append(right); root.addLayout(body,1)
 
@@ -133,9 +135,9 @@ class CockpitHud(QDialog):
         command_row.addWidget(self.command_input,1); root.addLayout(command_row)
 
         footer=QHBoxLayout(); self._footer_widgets=[]
-        compact=QPushButton("COMPACT / NORMAL"); compact.setToolTip("Basculer entre la fenêtre compacte et la taille normale")
+        compact=QPushButton("Réduire / agrandir"); compact.setToolTip("Réduire la fenêtre ou revenir à sa taille normale"); compact.setAccessibleName("Réduire ou agrandir la fenêtre")
         compact.clicked.connect(self._toggle_size); footer.addWidget(compact); self._footer_widgets.append(compact)
-        footer.addStretch(); self.pin=QPushButton("PIN"); self.pin.setCheckable(True); self.pin.setChecked(True); self.pin.clicked.connect(self._toggle_pin); footer.addWidget(self.pin); self._footer_widgets.append(self.pin); root.addLayout(footer)
+        footer.addStretch(); self.pin=QPushButton("Toujours visible ✓"); self.pin.setToolTip("Garder Black Halo au-dessus des autres fenêtres"); self.pin.setAccessibleName("Garder Black Halo au premier plan"); self.pin.setCheckable(True); self.pin.setChecked(True); self.pin.clicked.connect(self._toggle_pin); footer.addWidget(self.pin); self._footer_widgets.append(self.pin); root.addLayout(footer)
         self.mini_reactor=Reactor(self); self.mini_reactor.setMinimumSize(0,0); self.mini_reactor.setFixedSize(190,190); self.mini_reactor.clicked.connect(self._restore_from_reactor); self.mini_reactor.hide()
 
     def _command(self,command):
