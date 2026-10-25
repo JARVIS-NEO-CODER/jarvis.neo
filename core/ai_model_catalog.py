@@ -8,17 +8,29 @@ from typing import Any
 # Keep this list independent from Ollama so changing provider immediately
 # repopulates the visible selector with the correct models.
 GROQ_MODELS = [
-    ("Llama 3.1 8B Instant", "llama-3.1-8b-instant"),
-    ("Llama 3.3 70B Versatile", "llama-3.3-70b-versatile"),
-    ("GPT-OSS 20B", "openai/gpt-oss-20b"),
+    ("GPT-OSS 20B • Recommandé", "openai/gpt-oss-20b"),
     ("GPT-OSS 120B", "openai/gpt-oss-120b"),
     ("GPT-OSS Safeguard 20B", "openai/gpt-oss-safeguard-20b"),
-    ("Qwen 3.6 27B", "qwen/qwen3.6-27b"),
     ("Qwen 3.8 27B", "qwen/qwen3.8-27b"),
     ("MiniMax M2.7", "minimaxai/minimax-m2.7"),
-    ("Groq Compound", "groq/compound"),
-    ("Groq Compound Mini", "groq/compound-mini"),
+    ("Muse Spark Open", "meta-models/muse-spark-open"),
 ]
+
+RETIRED_GROQ_MODELS = {
+    "llama-3.1-8b-instant",
+    "llama-3.3-70b-versatile",
+    "qwen/qwen3.6-27b",
+    "groq/compound",
+    "groq/compound-mini",
+}
+
+
+def normalize_groq_model(model: str | None) -> str:
+    """Replace known retired Groq model IDs with the supported default."""
+    model_id = str(model or "").strip()
+    if not model_id or model_id in RETIRED_GROQ_MODELS:
+        return GROQ_MODELS[0][1]
+    return model_id
 
 OLLAMA_MODELS = [
     ("Grand • Llama 3.1 8B", "llama3.1:8b"),
@@ -45,7 +57,7 @@ def apply_provider_settings(
     provider = "groq" if str(provider).lower() == "groq" else "ollama"
     selected_model = str(model).strip()
     if provider == "groq":
-        selected_model = selected_model or GROQ_MODELS[0][1]
+        selected_model = normalize_groq_model(selected_model)
     else:
         selected_model = selected_model or OLLAMA_MODELS[1][1]
     config["ai_provider"] = provider
@@ -60,4 +72,4 @@ def apply_provider_settings(
     return config
 
 
-__all__ = ["GROQ_MODELS", "OLLAMA_MODELS", "model_catalog", "apply_provider_settings"]
+__all__ = ["GROQ_MODELS", "OLLAMA_MODELS", "RETIRED_GROQ_MODELS", "normalize_groq_model", "model_catalog", "apply_provider_settings"]
